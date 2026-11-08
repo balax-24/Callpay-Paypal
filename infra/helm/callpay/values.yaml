@@ -1,0 +1,86 @@
+# Images (built by CI and pushed to GHCR)
+image:
+  registry: ghcr.io/balax-24
+  tag: latest
+  pullPolicy: IfNotPresent
+
+api:
+  # Warm pool: these replicas always run with the agent and PayPal clients loaded,
+  # so a new call is answered instantly. The HPA adds more under load.
+  warmReplicas: 2
+  maxReplicas: 10
+  targetCPU: 60
+  resources:
+    requests: { cpu: 250m, memory: 384Mi }
+    limits: { cpu: "1", memory: 1Gi }
+worker:
+  replicas: 2
+web:
+  replicas: 2
+
+ingress:
+  enabled: true
+  className: traefik # k3s default
+  host: callpay.example.com
+
+# Non-secret settings (env vars on the API and worker)
+config:
+  PAYPAL_ENV: sandbox
+  APP_URL: https://callpay.example.com/api
+  PROVIDERS_LLM: claude,openai,gemini,ollama
+  PROVIDERS_STT: deepgram,assemblyai,openai_whisper
+  PROVIDERS_TTS: elevenlabs,cartesia,openai_tts
+  PROVIDERS_SMS: twilio,telnyx
+  PAYOUT_AUTO_APPROVE_LIMIT: "50"
+  REFUND_AUTO_LIMIT: "20"
+  CREW_SHARE_PCT: "10"
+  FULFIL_SECONDS: "20"
+  OLLAMA_URL: http://ollama:11434
+
+# Secrets: list values here (dev only) or point at an existing Secret with the same keys.
+existingSecret: ""
+secrets:
+  PAYPAL_CLIENT_ID: ""
+  PAYPAL_CLIENT_SECRET: ""
+  PAYPAL_WEBHOOK_ID: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_API_KEY: ""
+  GEMINI_API_KEY: ""
+  DEEPGRAM_API_KEY: ""
+  ELEVENLABS_API_KEY: ""
+  TWILIO_ACCOUNT_SID: ""
+  TWILIO_AUTH_TOKEN: ""
+  TWILIO_FROM_NUMBER: ""
+
+# Infrastructure endpoints (defaults match the bundled subcharts)
+endpoints:
+  databaseUrl: postgresql+asyncpg://callpay:callpay@{{ .Release.Name }}-postgresql:5432/callpay
+  kafka: "{{ .Release.Name }}-kafka:9092"
+  redis: redis://{{ .Release.Name }}-redis-master:6379/0
+  clickhouse: http://{{ .Release.Name }}-clickhouse:8123
+  temporal: "{{ .Release.Name }}-temporal-frontend:7233"
+  s3: ""
+
+postgresql:
+  enabled: true
+  auth: { username: callpay, password: callpay, database: callpay }
+redis:
+  enabled: true
+  architecture: standalone
+  auth: { enabled: false }
+kafka:
+  enabled: true
+  controller: { replicaCount: 1 }
+  listeners: { client: { protocol: PLAINTEXT } }
+clickhouse:
+  enabled: true
+  shards: 1
+  replicaCount: 1
+  auth: { username: callpay, password: callpay }
+temporal:
+  enabled: true
+  server: { replicaCount: 1 }
+  cassandra: { enabled: false }
+  elasticsearch: { enabled: false }
+  prometheus: { enabled: false }
+  grafana: { enabled: false }
