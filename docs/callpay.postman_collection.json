@@ -1,0 +1,1143 @@
+{
+  "info": {
+    "name": "CallPay API",
+    "description": "AI phone agent with PayPal checkout, payouts, refunds and disputes. Generated from OpenAPI.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8090/api"
+    }
+  ],
+  "item": [
+    {
+      "name": "analytics",
+      "item": [
+        {
+          "name": "POST /analytics/ask",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/ask",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "ask"
+              ]
+            },
+            "description": "Analytics Ask",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"<question>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /analytics/metric/{name}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/metric/:name",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "metric",
+                ":name"
+              ]
+            },
+            "description": "Analytics Metric"
+          }
+        },
+        {
+          "name": "GET /analytics/summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "summary"
+              ]
+            },
+            "description": "Analytics Summary"
+          }
+        },
+        {
+          "name": "GET /analytics/timeseries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/timeseries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "timeseries"
+              ]
+            },
+            "description": "Analytics Timeseries"
+          }
+        }
+      ]
+    },
+    {
+      "name": "approvals",
+      "item": [
+        {
+          "name": "GET /approvals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/approvals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "approvals"
+              ]
+            },
+            "description": "Everything waiting for the owner (payouts today; refunds and disputes later)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "businesses",
+      "item": [
+        {
+          "name": "GET /businesses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/businesses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "businesses"
+              ]
+            },
+            "description": "Businesses"
+          }
+        }
+      ]
+    },
+    {
+      "name": "calls",
+      "item": [
+        {
+          "name": "POST /calls",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls"
+              ]
+            },
+            "description": "Create Call",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"caller\": \"<caller>\",\n  \"channel\": \"web\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /calls",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls"
+              ]
+            },
+            "description": "List Calls"
+          }
+        },
+        {
+          "name": "GET /calls/{call_id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls/:call_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls",
+                ":call_id"
+              ]
+            },
+            "description": "Get Call"
+          }
+        },
+        {
+          "name": "POST /calls/{call_id}/end",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls/:call_id/end",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls",
+                ":call_id",
+                "end"
+              ]
+            },
+            "description": "Call End"
+          }
+        },
+        {
+          "name": "POST /calls/{call_id}/poll",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls/:call_id/poll",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls",
+                ":call_id",
+                "poll"
+              ]
+            },
+            "description": "Call Poll"
+          }
+        },
+        {
+          "name": "POST /calls/{call_id}/turn",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls/:call_id/turn",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls",
+                ":call_id",
+                "turn"
+              ]
+            },
+            "description": "Call Turn",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"<text>\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "events",
+      "item": [
+        {
+          "name": "GET /events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            },
+            "description": "Events"
+          }
+        }
+      ]
+    },
+    {
+      "name": "health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "kitchen",
+      "item": [
+        {
+          "name": "GET /kitchen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kitchen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kitchen"
+              ]
+            },
+            "description": "Kitchen"
+          }
+        }
+      ]
+    },
+    {
+      "name": "llm",
+      "item": [
+        {
+          "name": "POST /llm/test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/llm/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "llm",
+                "test"
+              ]
+            },
+            "description": "Llm Test",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Say hello as a friendly taco truck phone assistant, in one sentence.\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "metrics",
+      "item": [
+        {
+          "name": "GET /metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
+            "description": "Metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "item": [
+        {
+          "name": "GET /orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "List Orders"
+          }
+        },
+        {
+          "name": "POST /orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Prices always come from the menu in the database, never from the AI.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"customer_phone\": \"<customer_phone>\",\n  \"lines\": [],\n  \"call_id\": \"<call_id>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /orders/{order_id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/:order_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id"
+              ]
+            },
+            "description": "Get Order"
+          }
+        },
+        {
+          "name": "POST /orders/{order_id}/dispute/submit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/:order_id/dispute/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "dispute",
+                "submit"
+              ]
+            },
+            "description": "Owner approved the drafted evidence -> send it to PayPal."
+          }
+        },
+        {
+          "name": "POST /orders/{order_id}/refund",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/:order_id/refund",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "refund"
+              ]
+            },
+            "description": "Refund Order",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"<amount>\",\n  \"reason\": \"Customer request\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "payouts",
+      "item": [
+        {
+          "name": "POST /payouts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payouts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payouts"
+              ]
+            },
+            "description": "Propose a crew payout. The policy engine decides: auto-send, owner approval, or deny.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"lines\": [],\n  \"memo\": \"Crew payout\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /payouts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payouts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payouts"
+              ]
+            },
+            "description": "List Payouts"
+          }
+        },
+        {
+          "name": "POST /payouts/{payout_id}/approve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payouts/:payout_id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payouts",
+                ":payout_id",
+                "approve"
+              ]
+            },
+            "description": "Approve Payout",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "POST /payouts/{payout_id}/reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payouts/:payout_id/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payouts",
+                ":payout_id",
+                "reject"
+              ]
+            },
+            "description": "Reject Payout",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "paypal",
+      "item": [
+        {
+          "name": "GET /paypal/cancel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/paypal/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "paypal",
+                "cancel"
+              ]
+            },
+            "description": "Paypal Cancel"
+          }
+        },
+        {
+          "name": "GET /paypal/return",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/paypal/return",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "paypal",
+                "return"
+              ]
+            },
+            "description": "Buyer approved on PayPal -> capture the order."
+          }
+        }
+      ]
+    },
+    {
+      "name": "providers",
+      "item": [
+        {
+          "name": "GET /providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "providers"
+              ]
+            },
+            "description": "Providers"
+          }
+        },
+        {
+          "name": "POST /providers/{layer}/{name}/kill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/providers/:layer/:name/kill",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "providers",
+                ":layer",
+                ":name",
+                "kill"
+              ]
+            },
+            "description": "Demo kill switch: force a provider offline to show failover."
+          }
+        },
+        {
+          "name": "POST /providers/{layer}/{name}/revive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/providers/:layer/:name/revive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "providers",
+                ":layer",
+                ":name",
+                "revive"
+              ]
+            },
+            "description": "Revive Provider"
+          }
+        }
+      ]
+    },
+    {
+      "name": "refunds",
+      "item": [
+        {
+          "name": "GET /refunds",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/refunds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refunds"
+              ]
+            },
+            "description": "List Refunds"
+          }
+        },
+        {
+          "name": "POST /refunds/{refund_id}/{decision}",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/refunds/:refund_id/:decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refunds",
+                ":refund_id",
+                ":decision"
+              ]
+            },
+            "description": "Decide Refund",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "staff",
+      "item": [
+        {
+          "name": "GET /staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/staff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "staff"
+              ]
+            },
+            "description": "List Staff"
+          }
+        },
+        {
+          "name": "POST /staff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/staff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "staff"
+              ]
+            },
+            "description": "Create Staff",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"name\": \"<name>\",\n  \"paypal_email\": \"<paypal_email>\",\n  \"role\": \"crew\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "support",
+      "item": [
+        {
+          "name": "GET /support",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/support",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "support"
+              ]
+            },
+            "description": "Support Cases"
+          }
+        }
+      ]
+    },
+    {
+      "name": "voice",
+      "item": [
+        {
+          "name": "POST /voice/stt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voice/stt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "voice",
+                "stt"
+              ]
+            },
+            "description": "Stt"
+          }
+        },
+        {
+          "name": "POST /voice/tts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voice/tts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "voice",
+                "tts"
+              ]
+            },
+            "description": "Tts",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"<text>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /voice/{carrier}/incoming",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voice/:carrier/incoming",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "voice",
+                ":carrier",
+                "incoming"
+              ]
+            },
+            "description": "Phone Incoming"
+          }
+        },
+        {
+          "name": "POST /voice/{carrier}/status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voice/:carrier/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "voice",
+                ":carrier",
+                "status"
+              ]
+            },
+            "description": "Carrier status callback: the caller hung up."
+          }
+        },
+        {
+          "name": "POST /voice/{carrier}/turn",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voice/:carrier/turn",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "voice",
+                ":carrier",
+                "turn"
+              ]
+            },
+            "description": "Phone Turn"
+          }
+        },
+        {
+          "name": "POST /voice/{carrier}/wait",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voice/:carrier/wait",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "voice",
+                ":carrier",
+                "wait"
+              ]
+            },
+            "description": "Hold loop while the caller pays on their phone. Speaking interrupts it (goes to /turn)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "webhooks",
+      "item": [
+        {
+          "name": "POST /webhooks/paypal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/paypal",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "paypal"
+              ]
+            },
+            "description": "Paypal Webhook"
+          }
+        }
+      ]
+    }
+  ]
+}
