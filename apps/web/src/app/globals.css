@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --fg: #14171a;
+  --muted: #5f6b76;
+  --line: #e3e6ea;
+  --brand: #0070e0;
+  --ok: #138a4b;
+  --warn: #b26b00;
+  --bad: #c62828;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0f11;
+    --panel: #121417;
+    --fg: #e6e8eb;
+    --muted: #8b96a1;
+    --line: #2a2e34;
+    --brand: #4da3ff;
+    --ok: #3ccf7f;
+    --warn: #f0b04a;
+    --bad: #ff6b6b;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 45%, transparent); }
+  100% { box-shadow: 0 0 0 18px transparent; }
+}
+.listening { animation: pulse-ring 1.2s ease-out infinite; }
