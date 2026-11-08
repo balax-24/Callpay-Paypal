@@ -1,0 +1,33 @@
+{
+  "uid": "callpay",
+  "title": "CallPay - calls, money and failover",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    { "type": "stat", "title": "Orders paid (1h)", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "sum(increase(callpay_orders_total{status=\"paid\"}[1h]))" }] },
+    { "type": "stat", "title": "Payouts sent (1h)", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "sum(increase(callpay_payouts_total{status=\"sent\"}[1h]))" }] },
+    { "type": "stat", "title": "Provider failovers (1h)", "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "sum(increase(callpay_failovers_total[1h]))" }] },
+    { "type": "stat", "title": "Agent reply p95 (s)", "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(callpay_turn_seconds_bucket[5m])) by (le))" }] },
+    { "type": "timeseries", "title": "Failovers by provider", "gridPos": { "x": 0, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "sum(rate(callpay_failovers_total[1m])) by (layer, from_provider)", "legendFormat": "{{layer}}/{{from_provider}}" }] },
+    { "type": "timeseries", "title": "Reply latency by brain (p50)", "gridPos": { "x": 12, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "histogram_quantile(0.5, sum(rate(callpay_turn_seconds_bucket[5m])) by (le, brain))", "legendFormat": "{{brain}}" }] },
+    { "type": "timeseries", "title": "Orders by status", "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "sum(rate(callpay_orders_total[5m])) by (status)", "legendFormat": "{{status}}" }] },
+    { "type": "timeseries", "title": "Calls by outcome", "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "datasource": { "uid": "prom" },
+      "targets": [{ "expr": "sum(rate(callpay_calls_total[5m])) by (channel, status)", "legendFormat": "{{channel}} {{status}}" }] }
+  ]
+}
