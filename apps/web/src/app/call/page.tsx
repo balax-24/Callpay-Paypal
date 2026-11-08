@@ -66,6 +66,21 @@ export default function CallWidget() {
     return idx;
   }, [speak]);
 
+  // Coming back from PayPal (?resume=<call id>): reload the call and let the payment check confirm it.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("resume");
+    if (!id) return;
+    fetch(`${API}/calls/${id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c: (CallState & { transcript: Line[] }) | null) => {
+        if (!c) return;
+        setCall(c);
+        setLines(c.transcript.map((t) => ({ role: t.role, text: t.text, agent: t.agent, llm: t.llm })));
+        window.history.replaceState(null, "", "/call");
+      })
+      .catch(() => {});
+  }, []);
+
   async function start() {
     setLines([]);
     setBusy(true);

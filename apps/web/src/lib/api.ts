@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090/api";
+export const API = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API}${path}`, {

@@ -320,17 +320,41 @@ async def _mark_paid(paypal_ref: str | None = None, order_id: str | None = None,
 
 @app.get("/paypal/return", response_class=HTMLResponse)
 async def paypal_return(ref: str, token: str):
-    """Buyer approved on PayPal -> capture the order."""
+    """Buyer approved on PayPal -> capture the order, then send them back to their call."""
     async with state.db.session() as s:
         o = await s.get(Order, ref)
         if not o or o.paypal_ref != token:
             raise HTTPException(400, "order mismatch")
-    capture = await state.paypal.capture_order(token, ref)
-    if capture.get("status") == "COMPLETED":
+        already_paid = o.status in ("paid", "preparing", "ready")
+        call_id = o.call_id
+    if not already_paid:
+        try:
+            capture = await state.paypal.capture_order(token, ref)
+        except PayPalError as e:  # e.g. ORDER_ALREADY_CAPTURED on a page refresh
+            if "ORDER_ALREADY_CAPTURED" not in str(e.body):
+                return HTMLResponse(_return_page("We couldn't complete the payment", "Please try the link again.", None), 502)
+            capture = {"status": "COMPLETED"}
+        if capture.get("status") != "COMPLETED":
+            return _return_page(f"Payment status: {capture.get('status')}", "Please try the link again.", None)
         caps = [c for pu in capture.get("purchase_units", []) for c in pu.get("payments", {}).get("captures", [])]
         await _mark_paid(order_id=ref, capture_id=caps[0]["id"] if caps else None)
-        return "<h1>Payment received - thank you!</h1><p>You can hang up or return to your call.</p>"
-    return f"<h1>Payment status: {capture.get('status')}</h1>"
+    return _return_page("Payment received, thank you!", "Taking you back to your call...", call_id)
+
+
+def _web_url() -> str:
+    """Public dashboard URL: APP_URL without its /api suffix (Kong/Caddy serve both)."""
+    url = state.settings.app_url.rstrip("/")
+    return url[: -len("/api")] if url.endswith("/api") else "http://localhost:8090"
+
+
+def _return_page(title: str, body: str, call_id: str | None) -> str:
+    """If PayPal opened in a new tab, close it (the call tab hears the confirmation).
+    If it replaced the call tab, go back to the call page, which resumes the call."""
+    back = f"{_web_url()}/call?resume={call_id}" if call_id else f"{_web_url()}/"
+    return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CallPay</title><body style="font-family:system-ui;max-width:28rem;margin:4rem auto;padding:0 1rem;text-align:center">
+<h1 style="font-size:1.4rem">{title}</h1><p>{body}</p><p><a href="{back}">Return to your call</a></p>
+<script>setTimeout(function(){{ if (window.opener) {{ window.close(); }} location.replace({json.dumps(back)}); }}, 1500);</script>"""
 
 
 @app.get("/paypal/cancel", response_class=HTMLResponse)
