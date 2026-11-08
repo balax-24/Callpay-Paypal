@@ -1,0 +1,7 @@
+:8080 {
+  respond /api/internal/* 403
+  handle_path /api/* {
+    reverse_proxy api:8000
+  }
+  reverse_proxy web:3000
+}

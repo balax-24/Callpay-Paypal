@@ -1,0 +1,189 @@
+# CallPay full stack. `docker compose up -d` starts everything.
+# The API tolerates any dependency being down (Postgres->SQLite, Kafka->memory).
+name: callpay
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  # ---------- gateway (Kong primary, Caddy fallback on :8081) ----------
+  kong:
+    <<: *restart
+    image: kong:3.9
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_DNS_VALID_TTL: "5" # re-resolve containers quickly after a restart (no stale-IP 502s)
+    volumes: ["./infra/kong/kong.yml:/kong/kong.yml:ro"]
+    ports: ["8090:8000", "8001:8001"]
+    depends_on: [api, web]
+  caddy:
+    <<: *restart
+    image: caddy:2.8
+    volumes: ["./infra/kong/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    ports: ["8091:8080"]
+    depends_on: [api, web]
+
+  # ---------- apps ----------
+  api:
+    <<: *restart
+    build: ./services/api
+    env_file: [{ path: .env, required: false }]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://callpay:callpay@postgres:5432/callpay
+      SQLITE_FALLBACK_URL: sqlite+aiosqlite:////data/callpay.db
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      # Native Ollama on the host (uses the GPU); Docker Ollama is the backup
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_DOCKER_URL: http://ollama:11434
+      TEMPORAL_ADDRESS: temporal:7233
+      API_INTERNAL_URL: http://api:8000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      S3_URL: http://objectstore:8333
+      LOCAL_STORAGE_DIR: /data/storage
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes: ["api-data:/data"]
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_started }
+  # Temporal worker: runs the order workflow (call -> paid -> kitchen -> payout)
+  worker:
+    <<: *restart
+    build: ./services/api
+    command: ["python", "-m", "app.worker"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      API_INTERNAL_URL: http://api:8000
+    healthcheck: { disable: true }
+    depends_on: [temporal, api]
+  web:
+    <<: *restart
+    build:
+      context: ./apps/web
+      args: { NEXT_PUBLIC_API_URL: "http://localhost:8090/api" }
+    ports: ["3000:3000"]
+
+  # ---------- data ----------
+  postgres:
+    <<: *restart
+    image: postgres:17
+    environment: { POSTGRES_USER: callpay, POSTGRES_PASSWORD: callpay, POSTGRES_DB: callpay }
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callpay"]
+      interval: 5s
+      retries: 20
+  redis:
+    <<: *restart
+    image: redis:7.4
+    ports: ["6379:6379"]
+  # S3-compatible object storage (MinIO no longer publishes public images)
+  objectstore:
+    <<: *restart
+    image: chrislusf/seaweedfs:3.80
+    command: server -s3 -dir=/data
+    volumes: ["s3-data:/data"]
+    ports: ["8333:8333"]
+
+  # ---------- streaming: Kafka -> Flink -> ClickHouse ----------
+  kafka:
+    <<: *restart
+    image: apache/kafka:3.9.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports: ["9092:9092"]
+  flink-jobmanager:
+    <<: *restart
+    build: ./infra/flink
+    image: callpay-flink:1.20
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager"
+    ports: ["8082:8081"]
+  flink-taskmanager:
+    <<: *restart
+    image: callpay-flink:1.20
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager\ntaskmanager.numberOfTaskSlots: 2"
+    depends_on: [flink-jobmanager]
+  # one-shot: submits infra/flink/analytics.sql (revenue per minute + fraud alerts)
+  flink-submit:
+    image: callpay-flink:1.20
+    command: ["sh", "/jobs/submit.sh"]
+    environment:
+      FLINK_PROPERTIES: "jobmanager.rpc.address: flink-jobmanager
+rest.address: flink-jobmanager
+rest.port: 8081"
+    restart: on-failure
+    depends_on: [flink-jobmanager, flink-taskmanager, kafka]
+  clickhouse:
+    <<: *restart
+    image: clickhouse/clickhouse-server:24.8
+    environment: { CLICKHOUSE_USER: callpay, CLICKHOUSE_PASSWORD: callpay, CLICKHOUSE_DB: callpay }
+    volumes: ["ch-data:/var/lib/clickhouse"]
+    ports: ["8123:8123"]
+
+  # ---------- workflows ----------
+  temporal:
+    <<: *restart
+    image: temporalio/auto-setup:1.25
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: callpay
+      POSTGRES_PWD: callpay
+      POSTGRES_SEEDS: postgres
+    ports: ["7233:7233"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  temporal-ui:
+    <<: *restart
+    image: temporalio/ui:2.31.2
+    environment: { TEMPORAL_ADDRESS: temporal:7233 }
+    ports: ["8088:8080"]
+    depends_on: [temporal]
+
+  # ---------- local AI fallback ----------
+  ollama:
+    <<: *restart
+    image: ollama/ollama:0.6.8
+    # Reuse models already on this machine (set OLLAMA_MODELS_DIR in .env elsewhere)
+    volumes: ["${OLLAMA_MODELS_DIR:-D:/AI/Ollama/models}:/root/.ollama/models"]
+    ports: ["11435:11434"]
+
+  # ---------- observability ----------
+  prometheus:
+    <<: *restart
+    image: prom/prometheus:v3.0.1
+    volumes: ["./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+  grafana:
+    <<: *restart
+    image: grafana/grafana:11.3.0
+    environment: { GF_SECURITY_ADMIN_PASSWORD: callpay }
+    volumes: ["./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro"]
+    ports: ["3001:3000"]
+    depends_on: [prometheus, loki]
+  loki:
+    <<: *restart
+    image: grafana/loki:3.3.0
+    ports: ["3100:3100"]
+
+volumes:
+  api-data: {}
+  pg-data: {}
+  s3-data: {}
+  ch-data: {}

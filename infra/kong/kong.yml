@@ -1,0 +1,30 @@
+_format_version: "3.0"
+services:
+  - name: api
+    url: http://api:8000
+    connect_timeout: 5000
+    read_timeout: 200000
+    write_timeout: 200000
+    routes:
+      - name: api
+        paths: ["/api"]
+        strip_path: true
+        response_buffering: false # stream Server-Sent Events (/events) without buffering
+    plugins:
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
+      - name: cors
+  # internal workflow endpoints are never exposed through the gateway
+  - name: internal-block
+    url: http://api:8000
+    routes:
+      - name: internal-block
+        paths: ["/api/internal"]
+    plugins:
+      - name: request-termination
+        config: { status_code: 403, message: "internal only" }
+  - name: web
+    url: http://web:3000
+    routes:
+      - name: web
+        paths: ["/"]
