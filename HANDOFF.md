@@ -41,6 +41,8 @@ Also working: refunds (auto ≤ $20, approval above), dispute evidence drafted f
 
 ## 4. New features worth adding (pick by impact vs. time)
 
+**Step-by-step build instructions for every feature below, plus a day-by-day schedule: [`docs/FEATURE_PLAN.md`](docs/FEATURE_PLAN.md).**
+
 **Highest demo impact (1–3 h each)**
 - **Live call transcript on the dashboard**: stream `call.transcript` events into a "Live calls" panel (the events already exist).
 - **QR code** for the pay link on the call page, so a judge scans it with a phone.
