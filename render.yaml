@@ -47,10 +47,15 @@ services:
     name: callpay-web
     runtime: docker
     rootDir: apps/web
+    dockerfilePath: ./Dockerfile
     plan: starter
+    # NEXT_PUBLIC_* is embedded in the browser bundle by Next.js at build time.
     envVars:
-      - key: NEXT_PUBLIC_API_URL # passed to the Docker build as a build arg
-        sync: false # e.g. https://callpay-api.onrender.com
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: callpay-api
+          property: host
 
 databases:
   - name: callpay-db

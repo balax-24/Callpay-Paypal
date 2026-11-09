@@ -4,8 +4,8 @@ Everything runs on the PayPal **sandbox**. No real money moves.
 
 ## 1. Order by phone or browser (about 60 seconds)
 
-**Phone:** call the number on the Devpost page.
-**Browser:** open the dashboard and click **Try a call**, then press **Call** and allow the microphone (or just type).
+**Browser demo (recommended):** open the public demo URL on the Devpost page and click **Try a call**, then press **Call** and allow the microphone (or type).
+**Phone:** phone calling is available only if the submission provides a configured number. Do not assume a number is active unless one is listed on the Devpost page.
 
 Say, for example:
 1. "Two carne asada tacos and a horchata."
@@ -13,18 +13,18 @@ Say, for example:
 3. "Yes." The agent creates a PayPal checkout and texts you the link (in the browser it appears next to the call).
 
 ## 2. Pay with PayPal sandbox
-Open the link and log in with the sandbox buyer account listed on the Devpost page. Approve the payment.
+Open the link and log in with a PayPal sandbox personal buyer account. The project owner must provide judges with the correct sandbox buyer access through Devpost's testing instructions; never use a real PayPal account or real money.
 Stay on the call: within a few seconds the agent says **"Got your payment"**. Nobody had to press anything; the webhook or capture landed during the call.
 
 ## 3. Watch the business side
 On the dashboard **Overview**:
-- the order moves to the **Kitchen** (preparing → ready);
+- the paid order appears in **Kitchen** (preparing → ready; fulfillment timing depends on the configured workflow);
 - the **Live events** feed streams every step;
 - revenue updates (Kafka → Flink → ClickHouse);
-- a crew payout is proposed and, under $50, sent automatically through **PayPal Payouts** (see **Payouts & approvals**).
+- the crew payout workflow proposes a payout and may send it through **PayPal Payouts** if the sandbox app and crew accounts are configured; otherwise inspect **Payouts & approvals** for its queued or approval state.
 
 ## 4. Break things on purpose
-In **Provider health**, press **kill** on the live AI provider, then keep talking on the call. The next provider answers; if all are killed, a rules engine still finishes the order. Do the same for PayPal Orders: the next checkout is a PayPal Invoice.
+In **Provider health**, press **kill** on an available AI provider and continue the call to observe fallback behavior. If all configured AI providers are unavailable, the deterministic rules engine can handle supported order turns. Payment fallback behavior depends on the PayPal account's enabled products and scopes.
 
 ## 5. Ask your business
 Open **Ask your business** and try "What's my busiest hour?" or "How much did we pay the crew?". The answer is computed by code from ClickHouse, not invented by the model.
