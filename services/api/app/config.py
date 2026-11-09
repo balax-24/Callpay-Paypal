@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     temporal_address: str = ""
     temporal_task_queue: str = "callpay"
     api_internal_url: str = "http://localhost:8000"
+    internal_api_token: str = ""
     payment_timeout_s: int = 900
     reminder_wait_s: int = 900
     fulfil_seconds: int = 20

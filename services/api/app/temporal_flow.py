@@ -12,12 +12,13 @@ with workflow.unsafe.imports_passed_through():
     import httpx
 
 API = os.environ.get("API_INTERNAL_URL", "http://api:8000")
+INTERNAL_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "")
 RETRY = RetryPolicy(initial_interval=timedelta(seconds=1), maximum_interval=timedelta(seconds=30), maximum_attempts=20)
 
 
 async def _post(path: str) -> dict:
     async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.post(f"{API}{path}")
+        r = await c.post(f"{API}{path}", headers={"X-CallPay-Internal-Token": INTERNAL_TOKEN} if INTERNAL_TOKEN else {})
         r.raise_for_status()
         return r.json()
 

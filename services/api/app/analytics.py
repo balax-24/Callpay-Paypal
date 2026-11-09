@@ -186,6 +186,8 @@ class Analytics:
                 c: Counter = Counter()
                 for o in orders:
                     for i in o.items:
+                        if i["name"] == "Crew tip":
+                            continue
                         c[i["name"]] += int(i["quantity"])
                 return {"top_items": [{"item": k, "quantity": v} for k, v in c.most_common(10)], "source": "database"}
             if name in ("missed_calls", "conversion"):

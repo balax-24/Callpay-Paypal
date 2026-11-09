@@ -31,7 +31,7 @@ LLM_BUDGET_S = 9.0  # a phone caller won't wait longer than this for a reply
 class Toolbox(Protocol):
     business: dict  # {id, name, currency, menu: [{id, name, price}]}
 
-    async def place_order(self, lines: list[dict], caller: str | None, call_id: str) -> dict: ...
+    async def place_order(self, lines: list[dict], caller: str | None, call_id: str, tip_pct: int = 0) -> dict: ...
     async def order_status(self, order_id: str) -> dict: ...
     async def send_pay_link(self, phone: str | None, url: str, order: dict) -> str: ...
     async def open_support_case(self, call_id: str, order_id: str | None, text: str) -> None: ...
@@ -50,16 +50,29 @@ def money(v: Decimal | str) -> str:
     return f"${Decimal(str(v)):.2f}"
 
 
-def _cart_lines(cart: dict, menu: dict) -> list[tuple[dict, int]]:
-    return [(menu[i], q) for i, q in cart.items() if i in menu and q > 0]
+def _cart_entry(value: Any) -> tuple[int, str]:
+    if isinstance(value, dict):
+        qty = value.get("qty", 0)
+        note = value.get("note", "")
+        return (qty if isinstance(qty, int) else 0, note if isinstance(note, str) else "")
+    return (value if isinstance(value, int) else 0, "")
+
+
+def _cart_lines(cart: dict, menu: dict) -> list[tuple[dict, int, str]]:
+    out = []
+    for item_id, raw in cart.items():
+        qty, note = _cart_entry(raw)
+        if item_id in menu and qty > 0:
+            out.append((menu[item_id], qty, note))
+    return out
 
 
 def cart_total(cart: dict, menu: dict) -> Decimal:
-    return sum((Decimal(str(m["price"])) * q for m, q in _cart_lines(cart, menu)), Decimal("0"))
+    return sum((Decimal(str(m["price"])) * q for m, q, _ in _cart_lines(cart, menu)), Decimal("0"))
 
 
 def cart_words(cart: dict, menu: dict) -> str:
-    parts = [f"{q} {m['name']}" for m, q in _cart_lines(cart, menu)]
+    parts = [f"{q} {m['name']}{f', {note}' if note else ''}" for m, q, note in _cart_lines(cart, menu)]
     return ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1] if parts else "nothing yet"
 
 
@@ -123,10 +136,12 @@ class OrderTaker:
     def __init__(self, llm: LLMHelper):
         self.llm = llm
 
-    def system_prompt(self, biz: dict, cart_desc: str, stage: str, flagged: bool) -> str:
+    def system_prompt(self, biz: dict, cart_desc: str, stage: str, flagged: bool, language: str = "en") -> str:
         menu = "\n".join(f"- {m['name']}: {money(m['price'])}" for m in biz["menu"])
         return (
             f"You are the friendly phone order-taker for {biz['name']}. Keep replies to 1-2 short spoken sentences.\n"
+            f"Reply in the caller's language ({ {'en': 'English', 'hi': 'Hindi', 'ta': 'Tamil', 'es': 'Spanish'}.get(language, 'English') }). "
+            "Keep item names in the exact English menu wording for validation.\n"
             f"MENU (the only things you can sell; prices are fixed):\n{menu}\n"
             f"Current cart: {cart_desc}. Conversation stage: {stage}.\n"
             "Reply ONLY with JSON: {\"intent\": one of [order, remove, confirm, deny, menu, total, goodbye, chat], "
@@ -141,7 +156,7 @@ class OrderTaker:
         menu = {m["id"]: m for m in biz["menu"]}
         stage = st.get("stage", "ordering")
         rule = understand(text, biz["menu"], stage)
-        data, used = await self.llm.ask(self.system_prompt(biz, cart_words(st["cart"], menu), stage, flagged), history, text)
+        data, used = await self.llm.ask(self.system_prompt(biz, cart_words(st["cart"], menu), stage, flagged, st.get("language", "en")), history, text)
         intent = rule
         llm_has_items = bool(data and data.get("intent") in ("order", "remove") and data.get("items"))
         if data and (rule.kind in ("chat", "clarify") or (llm_has_items and not rule.items)):
@@ -173,12 +188,14 @@ class Planner:
     async def turn(self, raw: str, st: dict, tools: Toolbox, history: list[dict], call_id: str, caller: str | None) -> Turn:
         st.setdefault("cart", {})
         st.setdefault("stage", "ordering")
+        st.setdefault("tip_pct", 0)
         text, flagged = screen(raw)
         if flagged:
             st["injection_flags"] = st.get("injection_flags", 0) + 1
         biz = tools.business
         menu = {m["id"]: m for m in biz["menu"]}
         stage = st["stage"]
+        allowed = {f"{Decimal(str(m['price'])):.2f}" for m in biz["menu"]}
 
         # Payments sub-agent: once a link is out, every turn first checks PayPal status.
         if stage == "awaiting_payment" and st.get("order_id"):
@@ -201,16 +218,38 @@ class Planner:
                 return Turn("No problem, the PayPal link stays valid. Thanks for calling!", "payments", end_call=True)
             return Turn(f"Your total is {money(st['total'])}. The PayPal link is in your texts and on screen; "
                         "I'll confirm as soon as it goes through.", "payments")
+        if stage == "tipping":
+            if re.search(r"\b(no|none|skip|zero)\b", text, re.I):
+                pct = 0
+            else:
+                pct = next((int(m.group(1)) for m in re.finditer(r"\b(10|15|20)(?:\s*%|\s+percent)?\b", text, re.I)), None)
+                if pct is None:
+                    pct = next((value for word, value in (("ten", 10), ("fifteen", 15), ("twenty", 20))
+                                if re.search(rf"\b{word}(?:\s+percent|\s*%)?\b", text, re.I)), None)
+                if pct is None and re.search(r"\b(yes|yeah|yep|sure|ok|okay|confirm|go ahead)\b", text, re.I):
+                    pct = 0
+            if pct is None:
+                return Turn("Please choose 10%, 15%, 20%, or no tip.", "order_taker")
+            st["tip_pct"] = pct
+            st["stage"] = "confirming"
+            food_total = cart_total(st["cart"], menu)
+            tip = (food_total * Decimal(pct) / Decimal(100)).quantize(Decimal("0.01"))
+            allowed.add(f"{food_total + tip:.2f}")
+            phrase = f" with a {pct}% crew tip" if pct else " with no tip"
+            if pct == 0 and re.search(r"\b(yes|yeah|yep|sure|ok|okay|confirm|go ahead)\b", text, re.I):
+                return await self._checkout(st, tools, call_id, caller, None)
+            return Turn(f"Thanks!{phrase}. The total is {money(food_total + tip)}. Shall I send the PayPal link?", "order_taker")
         if stage == "done":
             return Turn("You're all set! Anything else, or shall I let you go?", "order_taker", end_call=bool(rule.kind == "goodbye"))
 
         intent, used, llm_say = await self.order_taker.handle(text, flagged, st, tools, history)
         cart = st["cart"]
-        allowed = {f"{Decimal(str(m['price'])):.2f}" for m in biz["menu"]}
 
         if intent.kind == "order":
             for mid, q in intent.items:
-                cart[mid] = min(cart.get(mid, 0) + q, 50)
+                old_qty, old_note = _cart_entry(cart.get(mid, 0))
+                note = intent.notes.get(mid, old_note)
+                cart[mid] = {"qty": min(old_qty + q, 50), "note": note}
             st["stage"] = "ordering"
             allowed.add(f"{cart_total(cart, menu):.2f}")
             added = cart_words(dict(intent.items), menu)
@@ -219,8 +258,9 @@ class Planner:
                         events=[{"topic": "order.cart_updated", "call_id": call_id, "cart": cart_words(cart, menu)}])
         if intent.kind == "remove":
             for mid, q in intent.items:
-                cart[mid] = max(cart.get(mid, 0) - q, 0)
-            st["cart"] = {k: v for k, v in cart.items() if v}
+                old_qty, old_note = _cart_entry(cart.get(mid, 0))
+                cart[mid] = {"qty": max(old_qty - q, 0), "note": old_note}
+            st["cart"] = {k: v for k, v in cart.items() if _cart_entry(v)[0]}
             allowed.add(f"{cart_total(st['cart'], menu):.2f}")
             say = f"Done. Now you have {cart_words(st['cart'], menu)}, {money(cart_total(st['cart'], menu))}. Anything else?"
             return Turn(safe_say(llm_say, say, allowed), "order_taker", used)
@@ -235,11 +275,13 @@ class Planner:
             allowed.add(f"{t:.2f}")
             return Turn(safe_say(llm_say, f"You have {cart_words(cart, menu)}, which comes to {money(t)}.", allowed), "order_taker", used)
         if intent.kind == "confirm" and cart:
-            if stage != "confirming":
-                st["stage"] = "confirming"
+            if stage == "ordering":
+                st["stage"] = "tipping"
                 t = cart_total(cart, menu)
-                return Turn(f"So that's {cart_words(cart, menu)}, for a total of {money(t)}. "
-                            "Shall I text you a PayPal link to pay?", "order_taker", used)
+                return Turn(f"So that's {cart_words(cart, menu)}, for {money(t)} before tip. "
+                            "Would you like to add 10%, 15%, 20%, or no tip for the crew?", "order_taker", used)
+            if stage == "tipping":
+                return Turn("Would you like to add 10%, 15%, 20%, or no tip for the crew?", "order_taker", used)
             return await self._checkout(st, tools, call_id, caller, used)
         if intent.kind == "confirm":
             return Turn("Sure, what would you like to order?", "order_taker", used)
@@ -256,9 +298,10 @@ class Planner:
 
     async def _checkout(self, st: dict, tools: Toolbox, call_id: str, caller: str | None, used: str | None) -> Turn:
         """Payments sub-agent: create the PayPal checkout and send the link."""
-        lines = [{"menu_item_id": i, "quantity": q} for i, q in st["cart"].items() if q]
+        lines = [{"menu_item_id": i, "quantity": _cart_entry(v)[0], "note": _cart_entry(v)[1]}
+                 for i, v in st["cart"].items() if _cart_entry(v)[0]]
         try:
-            order = await tools.place_order(lines, caller, call_id)
+            order = await tools.place_order(lines, caller, call_id, int(st.get("tip_pct", 0)))
         except Exception as e:  # noqa: BLE001
             log.warning("checkout failed: %s", e)
             return Turn("Sorry, I couldn't reach PayPal just now. Let me try again in a moment, just say yes.", "payments", used)

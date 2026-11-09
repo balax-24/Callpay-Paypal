@@ -28,6 +28,7 @@ class Intent:
     kind: str  # order|remove|confirm|deny|paid|menu|support|goodbye|total|clarify|chat
     items: list[tuple[str, int]] = field(default_factory=list)  # (menu_item_id, qty)
     options: list[str] = field(default_factory=list)  # menu item ids when the caller was ambiguous
+    notes: dict[str, str] = field(default_factory=dict)  # menu item id -> caller modifier note
 
 
 def _norm(s: str) -> str:
@@ -109,9 +110,30 @@ def extract_items(text: str, menu: list[dict], ambiguous: list | None = None) ->
     return list(found.items())
 
 
+def extract_notes(text: str, items: list[tuple[str, int]], menu: list[dict]) -> dict[str, str]:
+    """Attach a simple spoken modifier to the matching requested menu item; never affects price."""
+    if not items:
+        return {}
+    notes: dict[str, str] = {}
+    for chunk in re.split(r"\b(?:and|plus|also)\b|[,;]", text, flags=re.I):
+        note_match = re.search(r"\b(no|without|extra|less|mild|spicy)\s+([a-z][a-z -]{0,50})", chunk, re.I)
+        if not note_match:
+            continue
+        prefix = chunk[:note_match.start()]
+        matches = extract_items(prefix, menu)
+        target_id = matches[-1][0] if matches else (items[0][0] if len(items) == 1 else None)
+        if not target_id:
+            continue
+        # Keep only the modifier phrase, trimming common trailing conversation filler.
+        value = re.split(r"\b(?:please|thanks|thank you|and|but)\b", note_match.group(0), maxsplit=1, flags=re.I)[0]
+        notes[target_id] = re.sub(r"\s+", " ", value).strip()[:120]
+    return notes
+
+
 def understand(text: str, menu: list[dict], stage: str) -> Intent:
     amb: list = []
     items = extract_items(text, menu, amb)
+    notes = extract_notes(text, items, menu)
     if amb and not items and not REMOVE.search(text):
         return Intent("clarify", [], amb[0][0])
     if SUPPORT.search(text):
@@ -119,7 +141,7 @@ def understand(text: str, menu: list[dict], stage: str) -> Intent:
     if items and REMOVE.search(text):
         return Intent("remove", items)
     if items:
-        return Intent("order", items)
+        return Intent("order", items, notes=notes)
     if stage == "awaiting_payment" and PAID.search(text):
         return Intent("paid")
     if MENU_Q.search(text):

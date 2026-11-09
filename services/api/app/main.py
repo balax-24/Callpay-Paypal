@@ -1,9 +1,10 @@
 import asyncio
+import hashlib
 import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import httpx
@@ -11,12 +12,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from .config import Settings, get_settings
 from .analytics import Analytics, ClickHouse
-from .db import Business, Call, Database, MenuItem, Order, Payout, ProviderEvent, Refund, Staff, SupportCase, WebhookEvent
+from .db import AuditLog, Business, Call, Database, MenuItem, Order, Payout, ProviderEvent, Refund, Staff, SupportCase, WebhookEvent
 from .paypal.client import PayPalClient, PayPalError
 from .policy import evaluate_payout, evaluate_refund
 from .agents.runtime import crew_split
@@ -54,6 +55,7 @@ state = State()
 
 
 _background: set[asyncio.Task] = set()
+_audit_lock = asyncio.Lock()
 
 
 def _spawn(coro) -> asyncio.Task:
@@ -144,6 +146,51 @@ app = FastAPI(title="CallPay API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+async def _audit(actor: str, action: str, entity: str, entity_id: str, data: dict) -> None:
+    """Append one canonical, hash-chained audit entry for a completed money/control action."""
+    async with _audit_lock:
+        async with state.db.session() as s:
+            last = (await s.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(1))).scalar_one_or_none()
+            previous = last.hash if last else "0" * 64
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(), "actor": actor, "action": action,
+                "entity": entity, "entity_id": str(entity_id), "data": data,
+            }
+            canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+            digest = hashlib.sha256((previous + canonical).encode("utf-8")).hexdigest()
+            s.add(AuditLog(actor=actor, action=action, entity=entity, entity_id=str(entity_id), data=data, canonical_ts=entry["ts"],
+                           prev_hash=previous, hash=digest, ts=datetime.fromisoformat(entry["ts"])))
+            await s.commit()
+
+
+def _audit_json(row: AuditLog) -> dict:
+    return {"id": row.id, "ts": _iso(row.ts), "actor": row.actor, "action": row.action, "entity": row.entity,
+            "entity_id": row.entity_id, "data": row.data, "prev_hash": row.prev_hash, "hash": row.hash}
+
+
+@app.get("/audit")
+async def audit_entries(limit: int = 100):
+    async with state.db.session() as s:
+        rows = (await s.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(min(max(limit, 1), 500)))).scalars()
+        return [_audit_json(row) for row in rows]
+
+
+@app.get("/audit/verify")
+async def verify_audit_chain():
+    async with state.db.session() as s:
+        rows = list((await s.execute(select(AuditLog).order_by(AuditLog.id.asc()))).scalars())
+    previous = "0" * 64
+    for row in rows:
+        entry = {"ts": row.canonical_ts, "actor": row.actor, "action": row.action,
+                 "entity": row.entity, "entity_id": row.entity_id, "data": row.data}
+        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+        expected = hashlib.sha256((previous + canonical).encode("utf-8")).hexdigest()
+        if row.prev_hash != previous or row.hash != expected:
+            return {"valid": False, "checked": row.id - 1, "broken_at": row.id}
+        previous = row.hash
+    return {"valid": True, "checked": len(rows), "broken_at": None, "head": previous}
+
+
 # ---------------- health & providers ----------------
 @app.get("/health")
 async def health():
@@ -182,6 +229,7 @@ async def kill_provider(layer: str, name: str):
     if name not in chain.breakers:
         raise HTTPException(404, "unknown provider")
     chain.kill(name)
+    await _audit("owner", "provider.kill", "provider", f"{layer}/{name}", {"layer": layer, "provider": name})
     await state.bus.publish("provider.health", {"layer": layer, "provider": name, "state": "open"})
     return chain.status()
 
@@ -192,6 +240,7 @@ async def revive_provider(layer: str, name: str):
     if name not in chain.breakers:
         raise HTTPException(404, "unknown provider")
     chain.revive(name)
+    await _audit("owner", "provider.revive", "provider", f"{layer}/{name}", {"layer": layer, "provider": name})
     await state.bus.publish("provider.health", {"layer": layer, "provider": name, "state": "closed"})
     return chain.status()
 
@@ -225,6 +274,7 @@ async def businesses():
 class OrderLine(BaseModel):
     menu_item_id: str
     quantity: int = Field(ge=1, le=50)
+    note: str = Field("", max_length=120)
 
 
 class CreateOrder(BaseModel):
@@ -232,14 +282,23 @@ class CreateOrder(BaseModel):
     customer_phone: str | None = None
     lines: list[OrderLine] = Field(min_length=1, max_length=30)
     call_id: str | None = None
+    tip_pct: int = Field(default=0, description="Optional crew tip percentage, selected from 0, 10, 15, or 20")
+
+    @field_validator("tip_pct")
+    @classmethod
+    def allowed_tip_pct(cls, value: int) -> int:
+        if value not in (0, 10, 15, 20):
+            raise ValueError("tip_pct must be one of 0, 10, 15, or 20")
+        return value
 
 
 def _order_json(o: Order) -> dict:
     return {
-        "id": o.id, "business_id": o.business_id, "status": o.status, "total": str(o.total), "currency": o.currency,
+        "id": o.id, "business_id": o.business_id, "status": o.status, "total": str(o.total), "tip": str(o.tip or Decimal("0.00")), "currency": o.currency,
         "items": o.items, "payment_method": o.payment_method, "paypal_ref": o.paypal_ref, "pay_link": o.pay_link,
         "created_at": o.created_at.isoformat() if o.created_at else None, "paid_at": o.paid_at.isoformat() if o.paid_at else None,
         "call_id": o.call_id, "capture_id": o.capture_id, "dispute": o.dispute, "customer_phone": o.customer_phone,
+        "last_reminded_at": o.last_reminded_at.isoformat() if o.last_reminded_at else None,
     }
 
 
@@ -256,15 +315,19 @@ async def create_order(body: CreateOrder):
             m = menu.get(line.menu_item_id)
             if not m:
                 raise HTTPException(400, f"unknown menu item {line.menu_item_id}")
-            items.append({"name": m.name, "quantity": line.quantity, "unit_amount": str(m.price)})
+            items.append({"name": m.name, "quantity": line.quantity, "unit_amount": str(m.price), "note": line.note.strip()})
         total = sum(Decimal(i["unit_amount"]) * i["quantity"] for i in items)
-        order = Order(business_id=biz.id, customer_phone=body.customer_phone, items=items, total=total, currency=biz.currency, call_id=body.call_id)
+        tip = (total * Decimal(body.tip_pct) / Decimal(100)).quantize(Decimal("0.01"))
+        if tip:
+            items.append({"name": "Crew tip", "quantity": 1, "unit_amount": str(tip), "note": "Optional crew tip"})
+        payable_total = total + tip
+        order = Order(business_id=biz.id, customer_phone=body.customer_phone, items=items, total=payable_total, tip=tip, currency=biz.currency, call_id=body.call_id)
         s.add(order)
         await s.commit()
 
         try:
             link, method = await state.payments.call(
-                lambda p: p.create(PaymentRequest(order.id, total, biz.currency, f"{biz.name} order {order.id[:8]}", items))
+                lambda p: p.create(PaymentRequest(order.id, payable_total, biz.currency, f"{biz.name} order {order.id[:8]}", items))
             )
         except AllProvidersFailed as e:
             order.status = "failed"
@@ -275,8 +338,8 @@ async def create_order(body: CreateOrder):
         order.status, order.payment_method, order.paypal_ref, order.pay_link = "link_sent", method, link.paypal_ref, link.url
         await s.commit()
         ORDERS.labels("link_sent").inc()
-        await state.bus.publish("payment.link_sent", {"order_id": order.id, "method": method, "total": str(total), "call_id": order.call_id})
-        await state.bus.publish("order.created", {"order_id": order.id, "total": str(total), "call_id": order.call_id})
+        await state.bus.publish("payment.link_sent", {"order_id": order.id, "method": method, "total": str(payable_total), "call_id": order.call_id})
+        await state.bus.publish("order.created", {"order_id": order.id, "total": str(payable_total), "call_id": order.call_id})
         out = _order_json(order)
     out["workflow"] = await state.flows.start_order(order.id)
     return out
@@ -298,6 +361,35 @@ async def get_order(order_id: str):
         return _order_json(o)
 
 
+@app.post("/orders/{order_id}/remind")
+async def remind_order(order_id: str):
+    """Resend an unpaid checkout link, at most once every two minutes per order."""
+    async with state.db.session() as s:
+        o = await s.get(Order, order_id)
+        if not o:
+            raise HTTPException(404, "order not found")
+        if o.status != "link_sent":
+            raise HTTPException(409, "only unpaid orders with a checkout link can be reminded")
+        now = datetime.now(timezone.utc)
+        last = o.last_reminded_at
+        if last:
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if now - last < timedelta(minutes=2):
+                retry_after = max(1, int((timedelta(minutes=2) - (now - last)).total_seconds()))
+                raise HTTPException(429, f"please wait {retry_after} seconds before resending")
+        o.last_reminded_at = now
+        await s.commit()
+        order = _order_json(o)
+    channel = "screen"
+    if order["customer_phone"]:
+        channel = await _send_sms(order["customer_phone"], f"Your saved CallPay order is ready to pay: {order['pay_link']}")
+    topic = "recovery.sent" if channel == "sms" else "recovery.skipped"
+    await state.bus.publish(topic, {"order_id": order_id, "call_id": order["call_id"], "channel": channel, "total": order["total"]})
+    order["reminder_channel"] = channel
+    return order
+
+
 async def _mark_paid(paypal_ref: str | None = None, order_id: str | None = None, capture_id: str | None = None) -> Order | None:
     async with state.db.session() as s:
         o = await s.get(Order, order_id) if order_id else None
@@ -314,6 +406,8 @@ async def _mark_paid(paypal_ref: str | None = None, order_id: str | None = None,
         await s.commit()
         ORDERS.labels("paid").inc()
         await state.bus.publish("payment.completed", {"order_id": o.id, "total": str(o.total), "call_id": o.call_id})
+        await _audit("paypal_webhook", "payment.completed", "order", o.id,
+                     {"total": str(o.total), "capture_id": capture_id, "tip": str(o.tip or Decimal("0.00"))})
     await state.flows.signal_paid(o.id)
     return o
 
@@ -462,6 +556,8 @@ async def _send_payout(s, p: Payout) -> None:
     p.paypal_batch_id = res.get("batch_header", {}).get("payout_batch_id")
     p.status, p.error, p.sent_at = "sent", None, datetime.now(timezone.utc)
     await s.commit()
+    await _audit("policy", "payout.sent", "payout", p.id,
+                 {"total": f"{p.total:.2f}", "paypal_batch_id": p.paypal_batch_id})
     PAYOUTS.labels("sent").inc()
     await state.bus.publish("payout.sent", {"payout_id": p.id, "paypal_batch_id": p.paypal_batch_id, "total": f"{p.total:.2f}"})
 
@@ -498,9 +594,12 @@ async def create_payout(body: CreatePayout):
         await s.commit()
         PAYOUTS.labels(p.status).inc()
         await state.bus.publish("payout.requested", {"payout_id": p.id, "total": f"{p.total:.2f}", "decision": decision.decision})
+        await _audit("policy", "payout.requested", "payout", p.id,
+                     {"status": p.status, "total": f"{p.total:.2f}", "policy": p.policy})
         if p.status == "approved":
             await _send_payout(s, p)
-        return _payout_json(p)
+        result = _payout_json(p)
+    return result
 
 
 @app.get("/payouts")
@@ -609,10 +708,19 @@ async def _op_crew_payout(order_id: str) -> None:
             return
         staff = [{"id": m.id} for m in (await s.execute(
             select(Staff).where(Staff.business_id == o.business_id, Staff.active.is_(True)))).scalars()]
-    lines = crew_split(o.total, staff, Decimal(str(state.settings.crew_share_pct)))
+    food_total = o.total - (o.tip or Decimal("0.00"))
+    lines = crew_split(food_total, staff, Decimal(str(state.settings.crew_share_pct)))
+    tip = o.tip or Decimal("0.00")
+    if tip and lines:
+        remaining = tip
+        for line in lines[:-1]:
+            part = (tip / len(lines)).quantize(Decimal("0.01"), rounding="ROUND_DOWN")
+            line["amount"] += part
+            remaining -= part
+        lines[-1]["amount"] += remaining
     if lines:
         await create_payout(CreatePayout(
-            business_id=o.business_id, memo=f"Crew share for order {o.id[:8]}",
+            business_id=o.business_id, memo=f"Crew share and tip for order {o.id[:8]}",
             lines=[PayoutLine(staff_id=line["staff_id"], amount=line["amount"]) for line in lines]))
 
 
@@ -628,7 +736,7 @@ async def _op_remind(order_id: str) -> None:
             await s.commit()
     channel = "none"
     if o.customer_phone:
-        channel = await _send_sms(o.customer_phone, f"Still hungry? Your order (${o.total:.2f}) is saved. Pay here: {o.pay_link}")
+        channel = await _send_sms(o.customer_phone, f"Still hungry? Your order (${o.total:.2f}, including ${o.tip or Decimal('0.00')} crew tip) is saved. Pay here: {o.pay_link}")
     # only a text that actually went out counts as a recovery attempt
     topic = "recovery.sent" if channel == "sms" else "recovery.skipped"
     await state.bus.publish(topic, {"order_id": o.id, "call_id": o.call_id, "channel": channel, "total": str(o.total)})
@@ -653,9 +761,10 @@ STEPS = {"fulfil": _op_fulfil, "ready": _op_ready, "crew_payout": _op_crew_payou
 
 @app.post("/internal/orders/{order_id}/{step}", include_in_schema=False)
 async def internal_step(order_id: str, step: str, request: Request):
-    # Only reachable inside the cluster: Kong/Caddy don't route /internal for outside callers.
-    if request.headers.get("x-forwarded-for"):
-        raise HTTPException(403, "internal only")
+    token = state.settings.internal_api_token
+    supplied = request.headers.get("x-callpay-internal-token", "")
+    if not token or not supplied or not __import__("hmac").compare_digest(token, supplied):
+        raise HTTPException(403, "internal authentication required")
     if step not in STEPS:
         raise HTTPException(404, "unknown step")
     await STEPS[step](order_id)
@@ -673,6 +782,7 @@ async def kitchen():
 class CreateRefund(BaseModel):
     amount: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
     reason: str = Field(default="Customer request", max_length=500)
+    items: list[dict] = Field(default_factory=list, max_length=30)
 
 
 def _refund_json(r: Refund) -> dict:
@@ -690,6 +800,7 @@ async def _send_refund(s, r: Refund, o: Order) -> None:
         return
     r.status, r.paypal_refund_id, r.error = "sent", res.get("id"), None
     await s.commit()
+    await _audit("policy", "refund.sent", "refund", r.id, {"order_id": o.id, "amount": f"{r.amount:.2f}", "paypal_refund_id": r.paypal_refund_id})
     await state.bus.publish("payment.refunded", {"order_id": o.id, "refund_id": r.id, "total": f"-{r.amount:.2f}"})
 
 
@@ -703,7 +814,24 @@ async def refund_order(order_id: str, body: CreateRefund):
             raise HTTPException(409, "order has no captured payment to refund")
         prior = (await s.execute(select(Refund).where(Refund.order_id == o.id, Refund.status.in_(("sent", "approved", "pending_approval"))))).scalars()
         already = sum((x.amount for x in prior), Decimal("0"))
-        amount = body.amount or (o.total - already)
+        if body.amount is not None and body.items:
+            raise HTTPException(422, "choose a direct amount or item quantities, not both")
+        if body.items:
+            requested: dict[str, int] = {}
+            for line in body.items:
+                name = line.get("name")
+                quantity = line.get("quantity")
+                if not isinstance(name, str) or not isinstance(quantity, int) or quantity < 1:
+                    raise HTTPException(422, "each refund item needs a name and positive integer quantity")
+                requested[name] = requested.get(name, 0) + quantity
+            amount = Decimal("0.00")
+            for name, quantity in requested.items():
+                purchased = next((item for item in o.items if item["name"] == name and name != "Crew tip"), None)
+                if not purchased or quantity > int(purchased["quantity"]):
+                    raise HTTPException(422, f"requested refund quantity exceeds purchased quantity for {name}")
+                amount += Decimal(purchased["unit_amount"]) * quantity
+        else:
+            amount = body.amount or (o.total - already)
         d = evaluate_refund(amount, o.total, already, auto_limit=Decimal(str(state.settings.refund_auto_limit)))
         r = Refund(order_id=o.id, amount=amount, currency=o.currency, reason=body.reason, policy=d.as_dict(),
                    status={"deny": "rejected", "approval": "pending_approval", "auto": "approved"}[d.decision],
@@ -712,7 +840,10 @@ async def refund_order(order_id: str, body: CreateRefund):
         await s.commit()
         if r.status == "approved":
             await _send_refund(s, r, o)
-        return _refund_json(r)
+        result = _refund_json(r)
+    await _audit("policy", "refund.requested", "refund", result["id"],
+                 {"order_id": order_id, "amount": result["amount"], "status": result["status"], "policy": result["policy"]})
+    return result
 
 
 @app.get("/refunds")
@@ -739,7 +870,9 @@ async def decide_refund(refund_id: str, decision: str, body: Decide | None = Non
         await s.commit()
         if r.status == "approved":
             await _send_refund(s, r, await s.get(Order, r.order_id))
-        return _refund_json(r)
+        result = _refund_json(r)
+    await _audit((body or Decide()).by, f"refund.{decision}", "refund", refund_id, {"status": result["status"]})
+    return result
 
 
 async def _draft_dispute_evidence(o: Order) -> str:
@@ -750,7 +883,8 @@ async def _draft_dispute_evidence(o: Order) -> str:
     if call:
         lines = [f"{t['role']}: {t['text']}" for t in call.transcript][-30:]
     facts = (f"Order {o.id} for ${o.total:.2f} placed by phone on {_iso(o.created_at)}; items: "
-             + ", ".join(f"{i['quantity']} x {i['name']}" for i in o.items)
+             + ", ".join(f"{i['quantity']} x {i['name']}" for i in o.items if i["name"] != "Crew tip")
+             + (f"; crew tip ${o.tip:.2f}" if o.tip else "")
              + f". Paid via PayPal at {_iso(o.paid_at)}. Status: {o.status}.")
     if not lines:
         return facts
@@ -796,7 +930,10 @@ async def submit_dispute_evidence(order_id: str):
             raise HTTPException(502, f"PayPal rejected the evidence: {e}")
         o.dispute = {**o.dispute, "evidence_submitted": True}
         await s.commit()
-        return _order_json(o)
+        result = _order_json(o)
+    await _audit("owner", "dispute.evidence_submitted", "order", order_id,
+                 {"dispute_id": result["dispute"]["id"]})
+    return result
 
 
 @app.get("/support")

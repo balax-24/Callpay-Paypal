@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Numeric, String, text
+from sqlalchemy import JSON, DateTime, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -49,6 +49,7 @@ class Order(Base):
     customer_phone: Mapped[str | None] = mapped_column(String(32))
     items: Mapped[list] = mapped_column(JSON)  # [{name, quantity, unit_amount}]
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    tip: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
     currency: Mapped[str] = mapped_column(String(3))
     status: Mapped[str] = mapped_column(String(20), default="created")  # created|link_sent|paid|preparing|ready|failed|expired
     call_id: Mapped[str | None] = mapped_column(String(32))
@@ -57,6 +58,7 @@ class Order(Base):
     payment_method: Mapped[str | None] = mapped_column(String(20))  # orders|invoice
     paypal_ref: Mapped[str | None] = mapped_column(String(64), index=True)
     pay_link: Mapped[str | None] = mapped_column(String(500))
+    last_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -123,6 +125,20 @@ class WebhookEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    actor: Mapped[str] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(80))
+    entity: Mapped[str] = mapped_column(String(80))
+    entity_id: Mapped[str] = mapped_column(String(100))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    canonical_ts: Mapped[str] = mapped_column(String(40))
+    prev_hash: Mapped[str] = mapped_column(String(64), default="0" * 64)
+    hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+
 class Staff(Base):
     __tablename__ = "staff"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
@@ -157,6 +173,8 @@ MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN call_id VARCHAR(32)",
     "ALTER TABLE orders ADD COLUMN capture_id VARCHAR(64)",
     "ALTER TABLE orders ADD COLUMN dispute JSON",
+    "ALTER TABLE orders ADD COLUMN last_reminded_at TIMESTAMP",
+    "ALTER TABLE orders ADD COLUMN tip NUMERIC(10, 2) DEFAULT 0.00",
 ]
 
 

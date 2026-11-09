@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import ProviderHealth from "@/components/ProviderHealth";
+import LiveCalls from "@/components/LiveCalls";
 import { Badge, Card, ErrorNote, Stat, statusTone } from "@/components/ui";
 import { ago, money, useEvents, usePoll, type BusEvent } from "@/lib/api";
 
@@ -10,7 +11,7 @@ type Summary = {
   conversion_pct: number; paid_out: string; batches: number; source: string;
 };
 type Point = { t: string; revenue: string; orders: number };
-type Order = { id: string; status: string; total: string; items: { name: string; quantity: number }[]; paid_at: string | null };
+type Order = { id: string; status: string; total: string; tip?: string; items: { name: string; quantity: number; note?: string }[]; paid_at: string | null };
 
 const LABEL: Record<string, string> = {
   "call.started": "Call started", "call.ended": "Call ended", "call.abandoned": "Caller hung up before paying",
@@ -69,6 +70,7 @@ export default function Overview() {
         <Link href="/call" className="rounded-md bg-brand text-white text-sm font-medium px-4 py-2">Try a call →</Link>
       </div>
       <ErrorNote error={sum.error} />
+      <LiveCalls />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="Revenue today" value={money(s?.revenue)} hint={`${s?.orders ?? 0} paid orders`} />
         <Stat label="Calls today" value={s?.calls ?? "–"} hint={`${s?.conversion_pct ?? 0}% converted`} />
@@ -90,7 +92,8 @@ export default function Overview() {
                 <div key={o.id} className="flex items-start justify-between gap-2 text-sm border-b border-line pb-2 last:border-0">
                   <div>
                     <div className="font-mono text-xs text-muted">#{o.id.slice(0, 6)} · {ago(o.paid_at)}</div>
-                    <div>{o.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}</div>
+                    <div>{o.items.filter((i) => i.name !== "Crew tip").map((i) => <span key={i.name}>{i.quantity}× {i.name}{i.note && <strong className="ml-1">({i.note})</strong>} </span>)}</div>
+                    {Number(o.tip ?? 0) > 0 && <div className="text-xs text-muted">Crew tip: {money(o.tip)}</div>}
                   </div>
                   <Badge tone={statusTone(o.status)}>{o.status}</Badge>
                 </div>

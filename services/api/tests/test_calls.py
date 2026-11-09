@@ -60,7 +60,9 @@ def test_full_call_to_cash_loop(client):
     t = client.post(f"/calls/{cid}/turn", json={"text": "can I get two carne asada tacos and a horchata"}).json()
     assert "$9.75" in t["say"] and t["agent"] == "order_taker" and t["llm"] is None
     t = client.post(f"/calls/{cid}/turn", json={"text": "that's it"}).json()
-    assert "total of $9.75" in t["say"] and t["call"]["stage"] == "confirming"
+    assert "before tip" in t["say"] and t["call"]["stage"] == "tipping"
+    t = client.post(f"/calls/{cid}/turn", json={"text": "no tip"}).json()
+    assert "total is $9.75" in t["say"] and t["call"]["stage"] == "confirming"
     t = client.post(f"/calls/{cid}/turn", json={"text": "yes please"}).json()
     assert t["agent"] == "payments" and t["call"]["stage"] == "awaiting_payment"
     assert t["call"]["pay_link"] == "https://paypal.test/pay"
@@ -79,12 +81,41 @@ def test_full_call_to_cash_loop(client):
     assert payouts[0]["total"] == "0.98" and payouts[0]["status"] == "sent"
     o = client.get(f"/orders/{order_id}").json()
     assert o["capture_id"] == "CAP1" and o["call_id"] == cid
-
     client.post(f"/calls/{cid}/end")
     assert client.get(f"/calls/{cid}").json()["status"] == "ended"
     summary = client.get("/analytics/summary", params={"window": "today"}).json()
     assert summary["revenue"] == "9.75" and summary["orders"] == 1
 
+
+def test_modifiers_are_preserved_without_changing_menu_total(client):
+    call = client.post("/calls", json={}).json()
+    result = client.post(f"/calls/{call['id']}/turn", json={"text": "two carne asada tacos no onions"}).json()
+    assert "$7.00" in result["say"]
+    cart = client.post(f"/calls/{call['id']}/turn", json={"text": "that's it"}).json()
+    assert "no onions" in cart["say"]
+    client.post(f"/calls/{call['id']}/turn", json={"text": "no tip"})
+    checkout = client.post(f"/calls/{call['id']}/turn", json={"text": "yes"}).json()
+    order = client.get(f"/orders/{checkout['call']['order_id']}").json()
+    taco = next(item for item in order["items"] if item["name"] == "Carne asada taco")
+    assert taco["note"] == "no onions" and order["total"] == "7.00"
+
+
+def test_call_tip_is_added_to_order_and_payout(client):
+    call = client.post("/calls", json={}).json()
+    cid = call["id"]
+    client.post(f"/calls/{cid}/turn", json={"text": "two carne asada tacos"})
+    client.post(f"/calls/{cid}/turn", json={"text": "that's it"})
+    tipped = client.post(f"/calls/{cid}/turn", json={"text": "15 percent"}).json()
+    assert tipped["call"]["stage"] == "confirming" and "$8.05" in tipped["say"]
+    checkout = client.post(f"/calls/{cid}/turn", json={"text": "yes"}).json()
+    order_id = checkout["call"]["order_id"]
+    order = client.get(f"/orders/{order_id}").json()
+    assert order["total"] == "8.05" and order["tip"] == "1.05"
+    event = {"id": "TIP-EVT", "event_type": "PAYMENT.CAPTURE.COMPLETED", "resource": {"id": "TIP-CAP", "custom_id": order_id}}
+    assert client.post("/webhooks/paypal", json=event, headers=HEADERS).status_code == 200
+    _wait(lambda: [p for p in client.get("/payouts").json() if p["status"] == "sent"])
+    payout = next(p for p in client.get("/payouts").json() if p["status"] == "sent")
+    assert payout["total"] == "1.75"  # 10% of food subtotal ($0.70) + full tip ($1.05)
 
 def test_unpaid_call_is_abandoned_then_recovered_and_expired(client):
     cid = client.post("/calls", json={"caller": "+15550001111"}).json()["id"]
@@ -154,6 +185,17 @@ def test_dispute_webhook_drafts_evidence(client):
         "disputed_transactions": [{"seller_transaction_id": "CAP4"}]}}, headers=HEADERS)
     d = client.get(f"/orders/{o['id']}").json()["dispute"]
     assert d["id"] == "PP-D-1" and "3.50" in d["draft_evidence"]
+
+
+def test_item_refund_amount_comes_from_purchased_lines(client):
+    client.mock.post(f"{PP}/v2/payments/captures/CAP-ITEM/refund").respond(201, json={"id": "RF-ITEM", "status": "COMPLETED"})
+    biz = client.get("/businesses").json()[0]
+    order = client.post("/orders", json={"business_id": biz["id"], "lines": [{"menu_item_id": biz["menu"][0]["id"], "quantity": 2}]}).json()
+    paid = {"id": "ITEM-EVT", "event_type": "PAYMENT.CAPTURE.COMPLETED", "resource": {"id": "CAP-ITEM", "custom_id": order["id"]}}
+    client.post("/webhooks/paypal", json=paid, headers=HEADERS)
+    refund = client.post(f"/orders/{order['id']}/refund", json={"items": [{"name": "Carne asada taco", "quantity": 1}]}).json()
+    assert refund["amount"] == "3.50" and refund["status"] == "sent"
+    assert client.post(f"/orders/{order['id']}/refund", json={"items": [{"name": "Carne asada taco", "quantity": 3}]}).status_code == 422
 
 
 def test_analytics_ask_without_llm(client):

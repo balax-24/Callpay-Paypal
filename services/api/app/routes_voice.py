@@ -51,9 +51,9 @@ class ApiTools:
     def __init__(self, business: dict):
         self.business = business
 
-    async def place_order(self, lines: list[dict], caller: str | None, call_id: str) -> dict:
+    async def place_order(self, lines: list[dict], caller: str | None, call_id: str, tip_pct: int = 0) -> dict:
         return await core.create_order(core.CreateOrder(
-            business_id=self.business["id"], customer_phone=caller, call_id=call_id,
+            business_id=self.business["id"], customer_phone=caller, call_id=call_id, tip_pct=tip_pct,
             lines=[core.OrderLine(**line) for line in lines]))
 
     async def order_status(self, order_id: str) -> dict:
@@ -163,7 +163,7 @@ async def end_call(call_id: str) -> Call | None:
         if not c or c.status != "active":
             return c
         st = c.state or {}
-        unpaid = st.get("stage") == "awaiting_payment" or (st.get("cart") and st.get("stage") in ("ordering", "confirming"))
+        unpaid = st.get("stage") == "awaiting_payment" or (st.get("cart") and st.get("stage") in ("ordering", "confirming", "tipping"))
         c.status = "abandoned" if unpaid else "ended"
         c.ended_at = datetime.now(timezone.utc)
         await s.commit()
@@ -186,6 +186,7 @@ class StartCall(BaseModel):
     business_id: str | None = None
     caller: str | None = Field(default=None, max_length=32)
     channel: str = "web"
+    language: str = Field(default="en", pattern="^(en|hi|ta|es)$")
 
 
 class TurnIn(BaseModel):
@@ -195,6 +196,12 @@ class TurnIn(BaseModel):
 @router.post("/calls")
 async def create_call(body: StartCall):
     c, say = await start_call(body.business_id, body.channel if body.channel in ("web",) else "web", body.caller)
+    if body.language != "en":
+        async with core.state.db.session() as s:
+            persisted = await s.get(Call, c.id)
+            persisted.state = {**(persisted.state or {}), "language": body.language}
+            await s.commit()
+            c = persisted
     return {**_call_json(c), "say": say}
 
 

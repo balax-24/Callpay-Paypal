@@ -100,6 +100,8 @@ class PayPalClient:
         cancel_url: str,
     ) -> dict:
         item_total = sum(Decimal(i["unit_amount"]) * int(i["quantity"]) for i in items)
+        if item_total != amount:
+            raise ValueError(f"PayPal order item total {item_total:.2f} does not match payable amount {amount:.2f}")
         body = {
             "intent": "CAPTURE",
             "purchase_units": [
@@ -117,6 +119,7 @@ class PayPalClient:
                             "name": i["name"][:127],
                             "quantity": str(i["quantity"]),
                             "unit_amount": {"currency_code": currency, "value": f"{Decimal(i['unit_amount']):.2f}"},
+                            **({"description": i["note"][:127]} if i.get("note") else {}),
                         }
                         for i in items
                     ],
@@ -163,6 +166,7 @@ class PayPalClient:
                         "name": i["name"][:200],
                         "quantity": str(i["quantity"]),
                         "unit_amount": {"currency_code": currency, "value": f"{Decimal(i['unit_amount']):.2f}"},
+                        **({"description": i["note"][:127]} if i.get("note") else {}),
                     }
                     for i in items
                 ],

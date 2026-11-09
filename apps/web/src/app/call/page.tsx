@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Badge, Card } from "@/components/ui";
 import { API, money, post, usePoll } from "@/lib/api";
 
 type Line = { role: "agent" | "caller"; text: string; agent?: string; llm?: string | null; voice?: string };
-type CallState = { id: string; stage: string | null; pay_link: string | null; total: string | null; status: string; order_id: string | null };
+type CallState = { id: string; stage: string | null; pay_link: string | null; total: string | null; tip?: string; status: string; order_id: string | null };
 type TurnOut = { say: string; agent: string; llm: string | null; end_call: boolean; call: CallState };
 type Menu = { id: string; name: string; currency: string; menu: { id: string; name: string; price: string }[] }[];
+const LANGUAGES = { en: "en-US", hi: "hi-IN", ta: "ta-IN", es: "es-ES" } as const;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const SpeechRec: any = typeof window !== "undefined" ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -18,6 +20,7 @@ export default function CallWidget() {
   const [lines, setLines] = useState<Line[]>([]);
   const [text, setText] = useState("");
   const [phone, setPhone] = useState("");
+  const [language, setLanguage] = useState<keyof typeof LANGUAGES>("en");
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState(true);
@@ -47,6 +50,7 @@ export default function CallWidget() {
     if ("speechSynthesis" in window) {
       await new Promise<void>((res) => {
         const u = new SpeechSynthesisUtterance(say);
+        u.lang = LANGUAGES[language];
         u.rate = 1.05;
         u.onend = () => res();
         u.onerror = () => res();
@@ -56,7 +60,7 @@ export default function CallWidget() {
       return "browser";
     }
     return "text";
-  }, [voice]);
+  }, [voice, language]);
 
   const agentSays = useCallback(async (say: string, agent?: string, llm?: string | null) => {
     const idx = Date.now();
@@ -85,7 +89,7 @@ export default function CallWidget() {
     setLines([]);
     setBusy(true);
     try {
-      const c = await post<CallState & { say: string }>("/calls", { caller: phone || null });
+      const c = await post<CallState & { say: string }>("/calls", { caller: phone || null, language });
       setCall(c);
       await agentSays(c.say, "planner");
     } finally {
@@ -141,7 +145,7 @@ export default function CallWidget() {
     }
     if (SpeechRec && sttMode === "browser") {
       const rec = new SpeechRec();
-      rec.lang = "en-US";
+      rec.lang = LANGUAGES[language];
       rec.interimResults = false;
       rec.maxAlternatives = 1;
       rec.onresult = (e: any) => send(e.results[0][0].transcript);
@@ -220,6 +224,7 @@ export default function CallWidget() {
           {!active ? (
             <>
               <input className="w-44 rounded-md border border-line bg-transparent px-3 py-2 text-sm" placeholder="Your phone (optional, for SMS)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <label className="text-xs text-muted">Language <select className="ml-1 rounded-md border border-line bg-panel px-2 py-2 text-fg" value={language} onChange={(e) => setLanguage(e.target.value as keyof typeof LANGUAGES)}><option value="en">English</option><option value="hi">हिन्दी</option><option value="ta">தமிழ்</option><option value="es">Español</option></select></label>
               <button onClick={start} disabled={busy} className="rounded-full bg-ok text-white px-6 py-2 font-medium disabled:opacity-50">Call</button>
             </>
           ) : (
@@ -247,6 +252,11 @@ export default function CallWidget() {
               <div className="text-sm text-ok">Payment received. The agent confirmed it on the call.</div>
             ) : (
               <>
+                {Number(call.tip ?? 0) > 0 && <p className="mb-2 text-xs text-muted">Includes a {money(call.tip)} crew tip.</p>}
+                <div className="mb-3 flex flex-col items-center gap-1 rounded-lg border border-line bg-white p-3">
+                  <QRCodeSVG value={call.pay_link} size={160} level="M" title="Scan to open PayPal checkout" />
+                  <span className="text-xs text-gray-600">Scan to pay on your phone</span>
+                </div>
                 <a href={call.pay_link} target="_blank" rel="noreferrer" className="block text-center rounded-full bg-[#ffc439] text-[#111] font-semibold py-2.5">Pay with PayPal</a>
                 <p className="text-xs text-muted mt-2">Sandbox: log in with a sandbox personal account. Stay on the call; the agent confirms when PayPal does.</p>
               </>

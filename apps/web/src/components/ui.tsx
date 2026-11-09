@@ -10,6 +10,8 @@ const NAV = [
   ["/orders", "Orders"],
   ["/payouts", "Payouts & approvals"],
   ["/analytics", "Ask your business"],
+  ["/audit", "Audit log"],
+  ["/chaos", "Chaos runs"],
   ["/call", "Try a call"],
 ] as const;
 

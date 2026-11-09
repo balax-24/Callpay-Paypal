@@ -41,6 +41,7 @@ services:
       OLLAMA_DOCKER_URL: http://ollama:11434
       TEMPORAL_ADDRESS: temporal:7233
       API_INTERNAL_URL: http://api:8000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       CLICKHOUSE_URL: http://clickhouse:8123
       S3_URL: http://objectstore:8333
       LOCAL_STORAGE_DIR: /data/storage
@@ -58,6 +59,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       API_INTERNAL_URL: http://api:8000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     healthcheck: { disable: true }
     depends_on: [temporal, api]
   web:

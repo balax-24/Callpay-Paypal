@@ -53,6 +53,41 @@ def test_order_prices_come_from_menu_and_creates_paypal_order(client):
     assert req.headers["PayPal-Request-Id"] == f"order-{o['id']}"
 
 
+def test_order_note_is_stored_and_does_not_change_price(client):
+    route = client.mock.post(f"{PP}/v2/checkout/orders").respond(
+        201, json={"id": "PPNOTE1", "links": [{"rel": "payer-action", "href": "https://paypal.test/note"}]}
+    )
+    biz, menu = _menu(client)
+    r = client.post("/orders", json={"business_id": biz["id"], "lines": [{"menu_item_id": menu[0]["id"], "quantity": 2, "note": "no onions"}]})
+    assert r.status_code == 200
+    order = r.json()
+    assert order["items"][0]["note"] == "no onions" and order["total"] == "7.00"
+    body = route.calls[0].request.content.decode()
+    assert '"description":"no onions"' in body
+
+
+def test_tip_is_code_computed_and_added_to_paypal_item_total(client):
+    route = client.mock.post(f"{PP}/v2/checkout/orders").respond(
+        201, json={"id": "PPTIP1", "links": [{"rel": "payer-action", "href": "https://paypal.test/tip"}]}
+    )
+    biz, menu = _menu(client)
+    r = client.post("/orders", json={"business_id": biz["id"], "tip_pct": 15, "lines": [{"menu_item_id": menu[0]["id"], "quantity": 2}]})
+    assert r.status_code == 200, r.text
+    order = r.json()
+    assert order["total"] == "8.05" and order["tip"] == "1.05"
+    body = __import__("json").loads(route.calls[0].request.content)
+    unit = body["purchase_units"][0]
+    assert unit["amount"]["value"] == "8.05"
+    assert unit["amount"]["breakdown"]["item_total"]["value"] == "8.05"
+    assert next(i for i in unit["items"] if i["name"] == "Crew tip")["unit_amount"]["value"] == "1.05"
+
+
+def test_tip_percentage_is_allowlisted(client):
+    biz, menu = _menu(client)
+    response = client.post("/orders", json={"business_id": biz["id"], "tip_pct": 17, "lines": [{"menu_item_id": menu[0]["id"], "quantity": 1}]})
+    assert response.status_code == 422
+
+
 def test_orders_failure_falls_back_to_invoice(client):
     client.mock.post(f"{PP}/v2/checkout/orders").respond(422, json={"name": "UNPROCESSABLE_ENTITY"})
     client.mock.post(f"{PP}/v2/invoicing/invoices").respond(201, json={"id": "INV2-1"})
@@ -68,6 +103,34 @@ def test_unknown_menu_item_rejected(client):
     biz, _ = _menu(client)
     r = client.post("/orders", json={"business_id": biz["id"], "lines": [{"menu_item_id": "nope", "quantity": 1}]})
     assert r.status_code == 400
+
+
+def test_remind_link_is_rate_limited_and_only_for_unpaid_orders(client):
+    client.mock.post(f"{PP}/v2/checkout/orders").respond(
+        201, json={"id": "PPREMIND1", "links": [{"rel": "payer-action", "href": "https://paypal.test/remind"}]}
+    )
+    biz, menu = _menu(client)
+    order = client.post("/orders", json={"business_id": biz["id"], "lines": [{"menu_item_id": menu[0]["id"], "quantity": 1}]}).json()
+    first = client.post(f"/orders/{order['id']}/remind")
+    assert first.status_code == 200 and first.json()["reminder_channel"] == "screen"
+    assert client.post(f"/orders/{order['id']}/remind").status_code == 429
+    assert client.post("/orders/unknown/remind").status_code == 404
+
+
+def test_remind_rejects_paid_orders(client):
+    client.mock.post(f"{PP}/v2/checkout/orders").respond(
+        201, json={"id": "PPREMIND2", "links": [{"rel": "payer-action", "href": "https://paypal.test/remind2"}]}
+    )
+    client.mock.post(f"{PP}/v1/notifications/verify-webhook-signature").respond(200, json={"verification_status": "SUCCESS"})
+    biz, menu = _menu(client)
+    order = client.post("/orders", json={"business_id": biz["id"], "lines": [{"menu_item_id": menu[0]["id"], "quantity": 1}]}).json()
+    headers = {
+        "paypal-auth-algo": "SHA256withRSA", "paypal-cert-url": "https://api.paypal.com/cert",
+        "paypal-transmission-id": "t-remind", "paypal-transmission-sig": "sig", "paypal-transmission-time": "now",
+    }
+    event = {"id": "WH-REMIND", "event_type": "PAYMENT.CAPTURE.COMPLETED", "resource": {"custom_id": order["id"]}}
+    assert client.post("/webhooks/paypal", json=event, headers=headers).status_code == 200
+    assert client.post(f"/orders/{order['id']}/remind").status_code == 409
 
 
 def test_verified_webhook_marks_paid_once(client):
@@ -98,6 +161,22 @@ def test_kill_switch(client):
     assert next(p for p in st if p["provider"] == "orders")["state"] == "open"
     st = client.post("/providers/payments/orders/revive").json()
     assert next(p for p in st if p["provider"] == "orders")["state"] == "closed"
+
+
+def test_audit_chain_records_provider_controls_and_verifies(client):
+    assert client.post("/providers/payments/orders/kill").status_code == 200
+    assert client.post("/providers/payments/orders/revive").status_code == 200
+    verification = client.get("/audit/verify").json()
+    assert verification["valid"] and verification["checked"] == 2
+    entries = client.get("/audit").json()
+    assert [entry["action"] for entry in reversed(entries)] == ["provider.kill", "provider.revive"]
+    assert entries[0]["prev_hash"] == entries[1]["hash"]
+
+
+def test_internal_workflow_step_requires_shared_token(client):
+    call = client.post("/calls", json={}).json()
+    denied = client.post(f"/internal/orders/{call['id']}/fulfil")
+    assert denied.status_code == 403
 
 
 def test_llm_fails_over_when_no_key(client):

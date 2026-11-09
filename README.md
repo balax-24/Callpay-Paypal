@@ -33,6 +33,12 @@ Caller ──► Twilio / Telnyx / browser widget ──► Agent planner ──
 | Storage | Call transcripts archived as JSON | SeaweedFS S3 → local disk |
 | Data | Source of truth | Postgres → SQLite |
 | Gateway | Rate limits, routing, `/internal` blocked | Kong → Caddy |
+| Live call view | Overview streams active call turns, agent brain, and payment status | Recent call history restored from API |
+| Payment QR | Scan-to-pay QR in the call and unpaid order views | Direct PayPal checkout URL |
+| Recovery | Resend an unpaid order link with a two-minute cooldown | SMS provider or on-screen reminder |
+| Order handling | Caller modifiers appear on tickets; optional 0/10/15/20% crew tips | Menu DB prices and code-computed totals only |
+| Reliability view | Dashboard chart for measured chaos-run results | Does not simulate payments or report fake paid orders |
+| Audit | Hash-chained records for money actions and provider controls, with verification UI | Local database storage |
 | Deploy | Docker Compose; Helm chart for k3s (HPA, warm pool, PDB); Render blueprint | |
 
 ### Safety rails
@@ -45,6 +51,7 @@ Caller ──► Twilio / Telnyx / browser widget ──► Agent planner ──
 
 ```bash
 cp .env.example .env   # add your PayPal sandbox keys; everything else is optional
+# Set INTERNAL_API_TOKEN to the same long random value for the API and Temporal worker.
 docker compose up -d --build
 ```
 
@@ -68,6 +75,18 @@ python -m venv .venv && .venv/Scripts/pip install -e ".[dev]"   # .venv/bin on m
 .venv/Scripts/pytest -q
 ```
 The suite runs a whole call end to end with every LLM switched off (the rules engine runs the call), plus Twilio TwiML, payouts, refunds, disputes and failover.
+
+## Demo features
+
+- **Live calls:** Overview streams transcript events and restores recent calls from the API.
+- **Scan to pay:** the browser call and unpaid order views show a QR code for the PayPal checkout URL.
+- **Link recovery:** Orders can resend an unpaid checkout link; the API rate-limits each order to one reminder per two minutes.
+- **Order notes:** supported voice modifiers such as “no onions” are stored with the order and displayed to the kitchen without affecting price.
+- **Crew tips:** the caller can choose 10%, 15%, 20%, or no tip. The server computes the tip from the database-priced food subtotal and includes it in PayPal checkout; all tip payouts still pass through the payout policy.
+- **Item refunds:** owners can select line-item quantities; refund amounts are recomputed from stored order prices and checked by the refund policy.
+- **Audit trail:** `/audit` and the Audit log page show hash-chained money and provider-control events; `/audit/verify` checks integrity.
+- **Multilingual browser calls:** English, Hindi, Tamil, and Spanish can be selected. Speech APIs use the selected locale; model replies follow the language while item names still validate against the English menu. Deterministic fallback replies remain English.
+- **Reliability view:** the Chaos runs page charts measured intake and failover results provided by the operator. It does not simulate checkout or paid events.
 
 ## Demo the failover
 Open the dashboard Overview, start a call in another tab, and press **kill** on any provider in the Provider health panel. The next turn runs on the next provider; the event feed shows the failover.
