@@ -66,7 +66,9 @@ services:
     <<: *restart
     build:
       context: ./apps/web
-      args: { NEXT_PUBLIC_API_URL: "/api" }
+      args:
+        NEXT_PUBLIC_API_URL: "/api"
+        API_INTERNAL_URL: "http://api:8000"
     ports: ["3000:3000"]
 
   # ---------- data ----------

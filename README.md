@@ -68,6 +68,9 @@ docker compose up -d --build
 
 For a public URL (PayPal webhooks, Twilio): `powershell -File scripts\tunnel.ps1`, then set `APP_URL` in `.env`.
 
+### Replit deployment
+The repository includes a single-port Replit entrypoint for a Reserved VM. It runs Next.js publicly and keeps FastAPI private behind `/api`; use Replit PostgreSQL and add sandbox PayPal credentials in the published app's Secrets. Follow [docs/REPLIT_DEPLOYMENT.md](docs/REPLIT_DEPLOYMENT.md). The Replit app and its webhook still need to be published and verified by the owner.
+
 ### Tests
 ```bash
 cd services/api

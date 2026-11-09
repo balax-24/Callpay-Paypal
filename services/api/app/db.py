@@ -12,6 +12,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 log = logging.getLogger("callpay.db")
 
 
+def normalize_async_database_url(url: str) -> str:
+    """Accept standard Postgres URLs from managed hosts with SQLAlchemy's asyncpg driver."""
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url.removeprefix("postgresql://")
+    return url
+
+
 def _id() -> str:
     return uuid.uuid4().hex
 
@@ -180,8 +189,8 @@ MIGRATIONS = [
 
 class Database:
     def __init__(self, primary_url: str, fallback_url: str):
-        self.primary_url = primary_url
-        self.fallback_url = fallback_url
+        self.primary_url = normalize_async_database_url(primary_url)
+        self.fallback_url = normalize_async_database_url(fallback_url)
         self.engine: AsyncEngine | None = None
         self.backend = "none"
         self.session: async_sessionmaker | None = None
