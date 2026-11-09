@@ -24,7 +24,8 @@ type LiveCall = {
   endedAt: number | null;
 };
 
-const ACTIVE_TTL_MS = 30_000;
+// Keep active checkouts visible for the payment wait window. Ended calls still disappear after 30s.
+const ACTIVE_TTL_MS = 15 * 60_000;
 const CLOSED_TTL_MS = 30_000;
 
 function applyEvent(calls: Map<string, LiveCall>, event: BusEvent): Map<string, LiveCall> {

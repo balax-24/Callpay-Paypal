@@ -21,8 +21,12 @@ export default function ChaosPage() {
     setError(null);
     try {
       const parsed = JSON.parse(raw) as Result;
-      if (!["calls_started", "turns_succeeded", "errors", "failovers_triggered", "success_rate_pct", "elapsed_seconds"].every((key) => typeof parsed[key as keyof Result] === "number")) {
-        throw new Error("JSON does not match the chaos runner result format.");
+      const fields: Array<keyof Result> = ["calls_started", "turns_succeeded", "errors", "failovers_triggered", "success_rate_pct", "elapsed_seconds"];
+      if (!fields.every((key) => typeof parsed[key] === "number" && Number.isFinite(parsed[key]) && parsed[key] >= 0)) {
+        throw new Error("Run data must contain non-negative numeric values for every required field.");
+      }
+      if (parsed.success_rate_pct > 100) {
+        throw new Error("Success rate cannot be greater than 100%.");
       }
       setResult(parsed);
       window.localStorage.setItem("callpay-chaos-result", JSON.stringify(parsed));
@@ -40,10 +44,10 @@ export default function ChaosPage() {
     <div className="max-w-4xl space-y-4">
       <div>
         <h1 className="text-xl font-semibold">Chaos run results</h1>
-        <p className="text-sm text-muted">Run the local API exercise with <code>python scripts/chaos.py --chaos</code>, then paste its JSON here. The runner does not create PayPal payments.</p>
+        <p className="text-sm text-muted">Paste measured intake and failover results here to chart a reliability run. Include calls_started, turns_succeeded, errors, failovers_triggered, success_rate_pct, and elapsed_seconds. This page does not simulate PayPal payments or mark orders as paid.</p>
       </div>
       <Card title="Load a measured run">
-        <textarea className="min-h-28 w-full rounded-md border border-line bg-transparent p-3 font-mono text-xs" value={raw} onChange={(e) => setRaw(e.target.value)} placeholder='{"calls_started":12,"turns_succeeded":12,"errors":0,"failovers_triggered":3,"success_rate_pct":100.0,"elapsed_seconds":2.4}' />
+        <textarea className="min-h-28 w-full rounded-md border border-line bg-transparent p-3 font-mono text-xs" value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste measured run JSON here" />
         <div className="mt-2 flex items-center gap-3">
           <button className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white" onClick={load}>Show run</button>
           {error && <span className="text-xs text-bad">{error}</span>}
@@ -55,7 +59,7 @@ export default function ChaosPage() {
             <Card><div className="text-xs text-muted">Calls started</div><div className="mt-1 text-2xl font-semibold">{result.calls_started}</div></Card>
             <Card><div className="text-xs text-muted">Successful turns</div><div className="mt-1 text-2xl font-semibold">{result.turns_succeeded}</div></Card>
             <Card><div className="text-xs text-muted">Errors</div><div className="mt-1 text-2xl font-semibold">{result.errors}</div></Card>
-            <Card><div className="text-xs text-muted">Successful turns</div><div className="mt-1 text-2xl font-semibold">{result.success_rate_pct}%</div></Card>
+            <Card><div className="text-xs text-muted">Success rate</div><div className="mt-1 text-2xl font-semibold">{result.success_rate_pct}%</div></Card>
           </div>
           <Card title="Observed run" right={<Badge tone={result.errors ? "amber" : "green"}>{result.errors ? "errors observed" : "no errors observed"}</Badge>}>
             <div className="space-y-3">
