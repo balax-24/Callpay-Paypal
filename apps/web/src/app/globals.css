@@ -6,7 +6,7 @@
   --fg: #14171a;
   --muted: #5f6b76;
   --line: #e3e6ea;
-  --brand: #0070e0;
+  --brand: #0a5fd6;
   --ok: #138a4b;
   --warn: #b26b00;
   --bad: #c62828;
@@ -51,3 +51,15 @@ body {
   100% { box-shadow: 0 0 0 18px transparent; }
 }
 .listening { animation: pulse-ring 1.2s ease-out infinite; }
+
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.hero-glow {
+  background:
+    radial-gradient(60% 55% at 85% 0%, color-mix(in srgb, var(--brand) 16%, transparent), transparent 70%),
+    radial-gradient(45% 40% at 0% 100%, color-mix(in srgb, var(--ok) 10%, transparent), transparent 70%);
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 0.5s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .rise, .listening { animation: none; } }

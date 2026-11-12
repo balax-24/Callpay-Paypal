@@ -17,7 +17,7 @@ Open the link and log in with a PayPal sandbox personal buyer account. The proje
 Stay on the call: within a few seconds the agent says **"Got your payment"**. Nobody had to press anything; the webhook or capture landed during the call.
 
 ## 3. Watch the business side
-On the dashboard **Overview**:
+Open **See the owner dashboard** (the **Overview** page):
 - the paid order appears in **Kitchen** (preparing → ready; fulfillment timing depends on the configured workflow);
 - the **Live events** feed streams every step;
 - the **Live calls** panel shows the transcript and which brain answered;
