@@ -92,6 +92,13 @@ def main() -> int:
         "API_INTERNAL_URL": f"http://127.0.0.1:{api_port}",
     })
     env.setdefault("NEXT_PUBLIC_API_URL", "/api")
+    # A single VM has no Kafka broker or local model: turn those off unless the owner configured them,
+    # so the app goes straight to its built-in fallbacks instead of waiting on hosts that do not exist.
+    for name, value in {
+        "KAFKA_BOOTSTRAP": "", "OLLAMA_URL": "", "OLLAMA_DOCKER_URL": "", "REDIS_URL": "",
+        "PROVIDERS_LLM": "claude,openai,gemini", "LOCAL_STORAGE_DIR": "/tmp/callpay-storage",
+    }.items():
+        env.setdefault(name, value)
 
     missing = [name for name in ("DATABASE_URL", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET") if not env.get(name)]
     if missing:

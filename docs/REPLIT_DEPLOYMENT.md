@@ -26,6 +26,10 @@ CallPay's Docker Compose stack is designed for local development. The Replit ent
 
 ## Runtime notes
 
+- `.replit` declares Python 3.12 and Node.js 22 and a Reserved VM (`deploymentTarget = "vm"`).
+- The launcher turns off Kafka, Redis and the local Ollama model unless you set them, so the app uses its built-in fallbacks at once. With no LLM key the rules engine answers each turn in about half a second; add `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GEMINI_API_KEY` as a secret for natural replies.
+- Verified locally on Nov 12 with this launcher: all pages, `/api/internal/*` blocked, live events, a full call ending in a real sandbox checkout link, and reconciliation. Not yet verified on Replit itself.
+
 - Reserved VM is selected because the fallback order workflow and live event stream need a continuously running process. Autoscale can scale to zero and is not the chosen deployment for this configuration.
 - Replit's production app needs only one public port. `/api/*` is an internal Next.js rewrite, so no API port is exposed.
 - The full Kafka/Flink/ClickHouse/Temporal observability stack remains available through Docker Compose locally; this one-VM deployment uses the app's documented fallback paths.
