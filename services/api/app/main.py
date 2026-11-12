@@ -100,7 +100,13 @@ async def _seed() -> None:
             for name, price in [("Carne asada taco", "3.50"), ("Al pastor taco", "3.25"), ("Veggie burrito", "9.00"), ("Horchata", "2.75")]:
                 s.add(MenuItem(business_id=biz.id, name=name, price=Decimal(price)))
         if not (await s.execute(select(Staff).limit(1))).first():
+            import re as _re
+
             emails = [e.strip() for e in state.settings.crew_emails.split(",") if e.strip()]
+            bad = [e for e in emails if not _re.fullmatch(EMAIL_RE, e)]
+            if bad:
+                log.warning("CREW_EMAILS has %d invalid address(es); they were skipped", len(bad))
+            emails = [e for e in emails if e not in bad]
             emails += ["crew1@example.com", "crew2@example.com"][len(emails):]
             for (name, role), email in zip([("Rosa (cook)", "cook"), ("Miguel (cashier)", "cashier")], emails):
                 s.add(Staff(business_id=biz.id, name=name, role=role, paypal_email=email))
@@ -493,10 +499,14 @@ async def paypal_webhook(request: Request):
 
 
 # ---------------- staff & payouts ----------------
+# A single address: no spaces, no "=", exactly one "@" (rejects pasted env lines like "a@b.comKEY=value").
+EMAIL_RE = r"^[^@\s=,]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$"
+
+
 class CreateStaff(BaseModel):
     business_id: str
     name: str = Field(min_length=1, max_length=200)
-    paypal_email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=254)
+    paypal_email: str = Field(pattern=EMAIL_RE, max_length=254)
     role: str = Field(default="crew", max_length=40)
 
 
@@ -522,6 +532,30 @@ async def create_staff(body: CreateStaff):
         s.add(m)
         await s.commit()
         return _staff_json(m)
+
+
+class UpdateStaff(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    paypal_email: str | None = Field(default=None, pattern=EMAIL_RE, max_length=254)
+    active: bool | None = None
+
+
+@app.patch("/staff/{staff_id}")
+async def update_staff(staff_id: str, body: UpdateStaff):
+    """Fix a crew member's PayPal email or name, or take them off payouts (active=false)."""
+    async with state.db.session() as s:
+        m = await s.get(Staff, staff_id)
+        if not m:
+            raise HTTPException(404, "staff member not found")
+        before = _staff_json(m)
+        for field, value in body.model_dump(exclude_none=True).items():
+            setattr(m, field, value)
+        await s.commit()
+        after = _staff_json(m)
+    changed = {k: after[k] for k in ("name", "paypal_email", "active") if after[k] != before[k]}
+    if changed:
+        await _audit("owner", "staff.updated", "staff", staff_id, changed)
+    return after
 
 
 class PayoutLine(BaseModel):

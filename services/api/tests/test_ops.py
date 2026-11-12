@@ -164,3 +164,39 @@ def test_reconciliation_explains_missing_permission(client):
     client.mock.get(f"{PP}/v1/reporting/transactions").respond(403, json={"name": "NOT_AUTHORIZED"})
     r = client.get("/reconciliation")
     assert r.status_code == 502 and "Transaction search" in r.json()["detail"]["error"]
+
+
+# ---------------- crew records ----------------
+def test_fix_crew_email_rejects_pasted_env_lines(client):
+    staff = client.get("/staff").json()[1]
+    bad = "sb-x@personal.example.comINTERNAL_API_TOKEN=secret"
+    assert client.patch(f"/staff/{staff['id']}", json={"paypal_email": bad}).status_code == 422
+    assert client.post("/staff", json={"business_id": _biz(client)["id"], "name": "X", "paypal_email": bad}).status_code == 422
+    r = client.patch(f"/staff/{staff['id']}", json={"paypal_email": "sb-hlwxi53793408@personal.example.com"})
+    assert r.status_code == 200 and r.json()["paypal_email"] == "sb-hlwxi53793408@personal.example.com"
+    assert any(e["action"] == "staff.updated" for e in client.get("/audit").json())
+    assert client.patch(f"/staff/{staff['id']}", json={"active": False}).json()["active"] is False
+    assert all(s["id"] != staff["id"] for s in client.get("/staff").json())
+    assert client.patch("/staff/nope", json={"active": False}).status_code == 404
+
+
+def test_seed_skips_malformed_crew_emails(tmp_path, monkeypatch):
+    import respx
+    from fastapi.testclient import TestClient
+
+    for k, v in {
+        "PAYPAL_CLIENT_ID": "id", "PAYPAL_CLIENT_SECRET": "secret", "DATABASE_URL": "", "KAFKA_BOOTSTRAP": "",
+        "SQLITE_FALLBACK_URL": f"sqlite+aiosqlite:///{tmp_path}/seed.db", "PROVIDERS_LLM": "claude", "TEMPORAL_ADDRESS": "",
+        "CLICKHOUSE_URL": "", "LOCAL_STORAGE_DIR": str(tmp_path / "store"),
+        "CREW_EMAILS": "good@personal.example.com,bad@personal.example.comINTERNAL_API_TOKEN=leak",
+    }.items():
+        monkeypatch.setenv(k, v)
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    from app.main import app
+
+    with respx.mock(assert_all_called=False), TestClient(app) as c:
+        emails = [s["paypal_email"] for s in c.get("/staff").json()]
+    assert "good@personal.example.com" in emails
+    assert not any("TOKEN" in e for e in emails)
