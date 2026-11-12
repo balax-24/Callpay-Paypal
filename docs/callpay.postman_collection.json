@@ -12,6 +12,33 @@
   ],
   "item": [
     {
+      "name": "alerts",
+      "item": [
+        {
+          "name": "GET /alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/alerts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "alerts"
+              ]
+            },
+            "description": "List Alerts"
+          }
+        }
+      ]
+    },
+    {
       "name": "analytics",
       "item": [
         {
@@ -141,6 +168,56 @@
       ]
     },
     {
+      "name": "audit",
+      "item": [
+        {
+          "name": "GET /audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit"
+              ]
+            },
+            "description": "Audit Entries"
+          }
+        },
+        {
+          "name": "GET /audit/verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/audit/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audit",
+                "verify"
+              ]
+            },
+            "description": "Verify Audit Chain"
+          }
+        }
+      ]
+    },
+    {
       "name": "businesses",
       "item": [
         {
@@ -163,6 +240,34 @@
               ]
             },
             "description": "Businesses"
+          }
+        },
+        {
+          "name": "POST /businesses/{business_id}/menu",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/businesses/:business_id/menu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "businesses",
+                ":business_id",
+                "menu"
+              ]
+            },
+            "description": "Add Menu Item",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"<name>\",\n  \"price\": \"<price>\"\n}"
+            }
           }
         }
       ]
@@ -192,7 +297,7 @@
             "description": "Create Call",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"caller\": \"<caller>\",\n  \"channel\": \"web\"\n}"
+              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"caller\": \"<caller>\",\n  \"channel\": \"web\",\n  \"language\": \"en\"\n}"
             }
           }
         },
@@ -347,6 +452,86 @@
       ]
     },
     {
+      "name": "fraud",
+      "item": [
+        {
+          "name": "GET /fraud/flags",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/fraud/flags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "fraud",
+                "flags"
+              ]
+            },
+            "description": "List Flags"
+          }
+        },
+        {
+          "name": "POST /fraud/flags",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/fraud/flags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "fraud",
+                "flags"
+              ]
+            },
+            "description": "Create Flag",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caller\": \"<caller>\",\n  \"reason\": \"Flagged by the owner\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /fraud/flags/{flag_id}/clear",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/fraud/flags/:flag_id/clear",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "fraud",
+                "flags",
+                ":flag_id",
+                "clear"
+              ]
+            },
+            "description": "Clear Flag"
+          }
+        }
+      ]
+    },
+    {
       "name": "health",
       "item": [
         {
@@ -433,6 +618,61 @@
       ]
     },
     {
+      "name": "menu",
+      "item": [
+        {
+          "name": "PUT /menu/{item_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/menu/:item_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "menu",
+                ":item_id"
+              ]
+            },
+            "description": "Update Menu Item",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"<name>\",\n  \"price\": \"<price>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /menu/{item_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/menu/:item_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "menu",
+                ":item_id"
+              ]
+            },
+            "description": "Past orders keep their own copy of the item name and price, so removing an item never rewrites history."
+          }
+        }
+      ]
+    },
+    {
       "name": "metrics",
       "item": [
         {
@@ -506,7 +746,7 @@
             "description": "Prices always come from the menu in the database, never from the AI.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"customer_phone\": \"<customer_phone>\",\n  \"lines\": [],\n  \"call_id\": \"<call_id>\"\n}"
+              "raw": "{\n  \"business_id\": \"<business_id>\",\n  \"customer_phone\": \"<customer_phone>\",\n  \"lines\": [],\n  \"call_id\": \"<call_id>\",\n  \"tip_pct\": 0\n}"
             }
           }
         },
@@ -582,8 +822,32 @@
             "description": "Refund Order",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": \"<amount>\",\n  \"reason\": \"Customer request\"\n}"
+              "raw": "{\n  \"amount\": \"<amount>\",\n  \"reason\": \"Customer request\",\n  \"items\": []\n}"
             }
+          }
+        },
+        {
+          "name": "POST /orders/{order_id}/remind",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders/:order_id/remind",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "remind"
+              ]
+            },
+            "description": "Resend an unpaid checkout link, at most once every two minutes per order."
           }
         }
       ]
@@ -743,7 +1007,7 @@
                 "return"
               ]
             },
-            "description": "Buyer approved on PayPal -> capture the order."
+            "description": "Buyer approved on PayPal -> capture the order, then send them back to their call."
           }
         }
       ]
@@ -821,6 +1085,33 @@
               ]
             },
             "description": "Revive Provider"
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconciliation",
+      "item": [
+        {
+          "name": "GET /reconciliation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reconciliation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reconciliation"
+              ]
+            },
+            "description": "Match every paid order to PayPal's own transaction report. Read-only."
           }
         }
       ]

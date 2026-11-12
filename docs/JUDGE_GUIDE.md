@@ -33,6 +33,11 @@ Open **Ask your business** and try "What's my busiest hour?" or "How much did we
 ## 6. Audit and reliability view
 Open **Audit log** and press **Verify now** to validate the money-action hash chain. The **Chaos runs** page charts measured intake and failover results supplied by the operator; it does not simulate checkout or paid events.
 
+## 7. Owner tools
+- **Menu**: change a price, start a new call, and the agent quotes the new price.
+- **Reconcile**: press **Run now** to match paid orders against PayPal's own transaction report (new sandbox payments can take about 3 hours to appear there).
+- **Safety & alerts**: flag a phone number, then try to order more than $30 from it: the agent declines politely. Alerts for approvals, disputes and flags are listed here.
+
 ## What to look for in the code
 | Where | What |
 |---|---|
@@ -40,6 +45,7 @@ Open **Audit log** and press **Verify now** to validate the money-action hash ch
 | `services/api/app/agents/nlu.py` | Rules engine that runs a call with no LLM |
 | `services/api/app/paypal/` | Orders, capture, invoices, refunds, disputes, payouts, webhook verification, idempotency |
 | `services/api/app/policy.py` | Approval rules for payouts and refunds |
+| `services/api/app/routes_ops.py` | Menu editor, fraud guard and rate limits, owner alerts, PayPal reconciliation |
 | `services/api/app/temporal_flow.py` | Durable order workflow |
 | `services/api/app/routes_voice.py` | Twilio/Telnyx webhooks, live payment hold loop |
 | `infra/flink/analytics.sql` | Streaming revenue windows + fraud alerts |

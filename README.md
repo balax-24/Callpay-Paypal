@@ -41,6 +41,12 @@ Caller ──► Twilio / Telnyx / browser widget ──► Agent planner ──
 | Audit | Hash-chained records for money actions and provider controls, with verification UI | Local database storage |
 | Deploy | Docker Compose; Helm chart for k3s (HPA, warm pool, PDB); Render blueprint | |
 
+### Owner tools
+- **Menu editor**: edit items and prices in an AG Grid; the agent sells from the new menu on the next call, and every change is audited.
+- **PayPal reconciliation**: every paid order is matched to PayPal's Transaction Search report, with fees, net received, and anything missing or unexpected.
+- **Fraud guard**: a number that calls too often is flagged; its checkout is capped, its refunds always need the owner, and hard per-caller limits apply to calls, checkouts and turns.
+- **Owner alerts**: approvals, failed payouts, disputes, fraud flags and large orders reach the owner by text (Twilio → Telnyx) or on the dashboard.
+
 ### Safety rails
 - **Money never comes from the AI.** Items and prices come from the menu table; the LLM only proposes intents, which are validated against the menu. Any reply that mentions a dollar amount that isn't a real price or total, or contains a URL, is replaced with a template.
 - **Policy engine** for money leaving the business: payouts auto-send up to $50 and need owner approval above; hard limits deny ($500 per person, $1000 per batch, duplicate recipients). Refunds auto up to $20, never above the order total.
