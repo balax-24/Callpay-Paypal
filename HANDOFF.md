@@ -44,6 +44,8 @@ Also working: refunds (auto ≤ $20, approval above), dispute evidence drafted f
 
 **Redesign (Nov 12):** `/` is now a landing page (what CallPay does, example call, fallback chains, money rules, "Try a call"). The owner Overview moved to `/dashboard`. Navigation is a grouped sidebar (`Shell` in `apps/web/src/components/ui.tsx`) that collapses to a Menu button below 1024px. Verified at 1280px and 375px through `http://localhost:8090` (no horizontal overflow); web lint/build passed. Not checked on Replit.
 
+**Hosting change (Nov 12):** Replit publishing needs a paid plan, so the demo host is now **Render free plan**. Added a root `Dockerfile` (API + dashboard + gateway in one container, listening on `$PORT`), rewrote `render.yaml` as one free web service + free Postgres, and wrote [`docs/RENDER_DEPLOYMENT.md`](docs/RENDER_DEPLOYMENT.md). The launcher derives `APP_URL` from `RENDER_EXTERNAL_URL`. Verified locally with a 512 MB limit (about 390 MB used): pages, a full call with a real sandbox checkout link, events. Not yet deployed on Render. The free plan sleeps after ~15 idle minutes.
+
 **Next owner actions:** Make the GitHub repo public; publish the Replit app as a Reserved VM and add production database/sandbox PayPal secrets directly in Replit; set `APP_URL` to the Replit origin plus `/api`; register the webhook at `<public-url>/api/webhooks/paypal`; verify live sandbox payment + spoken in-call confirmation; supply sandbox buyer access through Devpost's permitted testing instructions; record and upload the video; complete the Devpost form. Render remains an alternate host if Replit publishing fails.
 
 ### P1 — gaps to close if time allows

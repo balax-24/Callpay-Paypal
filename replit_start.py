@@ -82,7 +82,8 @@ def _wait_for_web(web: subprocess.Popen, port: int, timeout: int = 120) -> None:
 def main() -> int:
     signal.signal(signal.SIGTERM, _request_shutdown)
     api_port = int(os.environ.get("CALLPAY_API_PORT", "8000"))
-    web_port = int(os.environ.get("CALLPAY_WEB_PORT", "3000"))
+    # Replit maps port 3000; Render and similar hosts pass the public port as PORT.
+    web_port = int(os.environ.get("CALLPAY_WEB_PORT") or os.environ.get("PORT") or "3000")
     next_port = int(os.environ.get("CALLPAY_NEXT_PORT", "3001"))
     env = os.environ.copy()
     env.update({
@@ -92,6 +93,8 @@ def main() -> int:
         "API_INTERNAL_URL": f"http://127.0.0.1:{api_port}",
     })
     env.setdefault("NEXT_PUBLIC_API_URL", "/api")
+    if not env.get("APP_URL") and env.get("RENDER_EXTERNAL_URL"):
+        env["APP_URL"] = env["RENDER_EXTERNAL_URL"].rstrip("/") + "/api"  # Render tells us our public URL
     # A single VM has no Kafka broker or local model: turn those off unless the owner configured them,
     # so the app goes straight to its built-in fallbacks instead of waiting on hosts that do not exist.
     for name, value in {
