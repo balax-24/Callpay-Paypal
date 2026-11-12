@@ -4,19 +4,120 @@
 
 > Built for the PayPal AI Hackathon 2026. PayPal **sandbox** only, no real money.
 
-## The call-to-cash loop
+## Architecture
 
+Solid arrows are the main path. Each dashed arrow is the automatic fallback that takes over when the box before it fails.
+
+```mermaid
+flowchart TB
+    caller(["Caller"])
+    owner(["Owner"])
+
+    subgraph edge["Entry"]
+        direction LR
+        phone["Twilio phone line"] -.-> telnyx["Telnyx"] -.-> widget["Browser call widget"]
+        web["Next.js dashboard<br/>AG Grid"]
+        kong["Kong gateway"] -.-> caddy["Caddy"]
+    end
+
+    subgraph api["FastAPI backend"]
+        direction TB
+        voice["Call handling<br/>speech in, speech out"]
+        planner["Agent planner"]
+        agents["Order-taker · Payments · Support<br/>Payouts · Analyst"]
+        guard["Guardrails<br/>menu-only prices · reply checks<br/>injection screening"]
+        policy["Policy engine<br/>auto, owner approval, or deny"]
+        ops["Owner tools<br/>menu · fraud guard · alerts · reconciliation"]
+        audit["Hash-chained audit log"]
+        voice --> planner --> agents --> guard
+        agents --> policy --> audit
+        ops --> audit
+    end
+
+    subgraph ai["AI and speech providers"]
+        direction LR
+        llm["Claude"] -.-> openai["OpenAI"] -.-> gemini["Gemini"] -.-> ollama["Local model"] -.-> rules["Rules engine"]
+        stt["Deepgram"] -.-> stt2["AssemblyAI · Whisper"] -.-> stt3["Browser speech"]
+        tts["ElevenLabs"] -.-> tts2["Cartesia · OpenAI"] -.-> tts3["Browser voice"]
+    end
+
+    subgraph paypal["PayPal"]
+        direction LR
+        orders["Orders + Capture"] -.-> invoicing["Invoicing"]
+        payouts["Payouts"]
+        refunds["Refunds · Disputes"]
+        search["Transaction Search"]
+        hooks["Webhooks"]
+    end
+
+    subgraph flow["Workflow"]
+        direction LR
+        temporal["Temporal<br/>paid → kitchen → ready → crew payout"] -.-> local["In-process runner"]
+    end
+
+    subgraph data["Data"]
+        direction LR
+        pg[("Postgres")] -.-> sqlite[("SQLite")]
+        kafka["Kafka"] -.-> mem["In-memory bus"]
+        flinkjob["Flink SQL<br/>revenue per minute · fraud"]
+        ch[("ClickHouse")] -.-> pgq["Postgres queries"]
+        s3[("S3 storage")] -.-> disk["Local disk"]
+        kafka --> flinkjob --> ch
+        kafka --> ch
+    end
+
+    caller --> phone
+    caller --> widget
+    owner --> web
+    phone --> kong
+    widget --> kong
+    web --> kong
+    kong --> voice
+    kong --> ops
+    voice --> stt
+    voice --> tts
+    planner --> llm
+    agents --> orders
+    policy --> payouts
+    policy --> refunds
+    ops --> search
+    hooks --> kong
+    api --> temporal
+    temporal --> policy
+    api --> pg
+    api --> kafka
+    api --> s3
+    agents --> ch
 ```
-Caller ──► Twilio / Telnyx / browser widget ──► Agent planner ──► Order-taker (menu DB prices only)
-                                                       │
-                                                       ▼
-                     PayPal Orders checkout ──► SMS link (Twilio → Telnyx → on screen)
-                                                       │
-           PayPal webhook / capture ──► "Got your payment!" said on the same call
-                                                       │
-         Temporal workflow ──► kitchen ticket ──► ready text ──► crew payout (policy engine → PayPal Payouts)
-                                                       │
-                Kafka ──► Flink (revenue/min, fraud) ──► ClickHouse ──► dashboard + "Ask your business"
+
+## One paid call, step by step
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Caller
+    participant A as CallPay agent
+    participant DB as Menu and orders
+    participant PP as PayPal
+    participant W as Workflow
+    participant K as Kitchen and crew
+
+    C->>A: "Two carne asada tacos and a horchata"
+    A->>DB: Look up items and prices
+    DB-->>A: $9.75 (code computes the total, not the AI)
+    A->>C: Confirms the order, offers a crew tip
+    C->>A: "Yes"
+    A->>PP: Create order (idempotent)
+    PP-->>A: Checkout link
+    A->>C: Link by text, or QR on screen
+    C->>PP: Pays
+    PP->>A: Capture and signed webhook
+    A->>C: "Got your payment, thank you!" on the same call
+    A->>W: Start order workflow
+    W->>K: Kitchen ticket, then ready
+    W->>PP: Crew payout through the policy engine
+    PP-->>K: Crew is paid
+    Note over A,W: If the caller hangs up unpaid, the workflow texts a reminder, then expires the order
 ```
 
 ## What's in it
