@@ -26,8 +26,10 @@ function useDark() {
 }
 
 export default function Grid<T>({
-  rows, cols, height = 420, onRowClicked, getRowId,
+  rows, cols, height = 420, onRowClicked, getRowId, onCellEdited,
 }: {
+  /** Called after the user edits a cell (columns must set `editable: true`). */
+  onCellEdited?: (row: T, field: string, newValue: unknown, oldValue: unknown) => void;
   rows: T[] | null;
   cols: ColDef<T>[];
   height?: number;
@@ -46,6 +48,9 @@ export default function Grid<T>({
         animateRows
         getRowId={getRowId ? (p) => getRowId(p.data) : undefined}
         onRowClicked={(e) => e.data && onRowClicked?.(e.data)}
+        singleClickEdit
+        stopEditingWhenCellsLoseFocus
+        onCellValueChanged={(e) => e.data && onCellEdited?.(e.data, String(e.colDef.field ?? ""), e.newValue, e.oldValue)}
         rowSelection={onRowClicked ? { mode: "singleRow", checkboxes: false, enableClickSelection: true } : undefined}
       />
     </div>
