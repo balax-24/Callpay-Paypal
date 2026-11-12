@@ -18,8 +18,8 @@ COPY services/api/pyproject.toml services/api/pyproject.toml
 COPY services/api/app services/api/app
 RUN pip install --no-cache-dir ./services/api
 COPY --from=web /app/apps/web apps/web
-COPY replit_start.py replit_gateway.mjs ./
+COPY callpay_start.py callpay_gateway.mjs ./
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PYTHONUNBUFFERED=1 \
     SQLITE_FALLBACK_URL=sqlite+aiosqlite:////tmp/callpay.db
 EXPOSE 3000
-CMD ["python", "replit_start.py"]
+CMD ["python", "callpay_start.py"]

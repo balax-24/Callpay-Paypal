@@ -24,6 +24,6 @@ The root `Dockerfile` packs the API, the dashboard and a small gateway into one 
 
 - **The free plan sleeps after about 15 minutes without traffic**, and the next visit takes up to a minute to wake it. Open the site shortly before a demo, or point a free uptime monitor at `/api/health`. An order waiting for payment when the service sleeps loses its in-memory timer; the payment itself is still captured when the buyer returns.
 - `APP_URL` is derived from Render's `RENDER_EXTERNAL_URL`. Set it yourself only for a custom domain (`https://your.domain/api`).
-- Memory: about 390 MB of the free plan's 512 MB in a local run of this image.
+- Memory: the Nov 12 Render-shaped smoke used 266.5 MiB under a hard 512 MiB container cap after loading the dashboard and making a call turn; usage can vary with traffic and provider configuration.
 - Free Postgres databases on Render expire after a limited time; fine for judging, not for long-term use.
-- Verified locally on Nov 12 with this image under a 512 MB limit: pages, blocked internal routes, live events, a full call with a real sandbox checkout link. Not yet verified on Render itself.
+- Verified locally on Nov 12 with the fixed image under a 512 MiB limit and `PORT=10000`: Next.js and the API started without installing runtime dependencies, the gateway bound the assigned port, all dashboard pages and API health/audit endpoints returned 200, internal routes returned 403, SSE streamed, and a call turn returned the code-computed menu total. PayPal credentials were intentionally absent in this smoke, so checkout creation, capture, webhook delivery, in-call confirmation, and payout remain unverified on this image and on Render itself.

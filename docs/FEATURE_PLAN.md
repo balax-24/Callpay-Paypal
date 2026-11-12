@@ -194,7 +194,7 @@ Companion to `HANDOFF.md`. Read `HANDOFF.md` sections 1 (rules) and 3 (P0 submis
 
 | When | Do |
 |---|---|
-| Day 1 morning | P0 from `HANDOFF.md`: repo public, Replit Reserved VM deploy, webhook on the published URL |
+| Day 1 morning | P0 from `HANDOFF.md`: repo public, Render deploy, webhook on the published URL |
 | Day 1 afternoon | Wave 1: features 1, 2, 3 (live transcript, QR, resend link) |
 | Day 1 evening | Feature 6 (tips → crew payouts) |
 | Day 2 morning | Feature 4 (order notes) + feature 17 (audit log) |

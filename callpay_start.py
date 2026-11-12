@@ -1,4 +1,4 @@
-"""Start CallPay's API and Next.js app behind Replit's single public web port."""
+"""Start CallPay's API and Next.js app behind one public web port."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _start_web(web_port: int, env: dict[str, str]) -> subprocess.Popen:
 
 def _start_gateway(env: dict[str, str]) -> subprocess.Popen:
     kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
-    return subprocess.Popen(["node", str(ROOT / "replit_gateway.mjs")], cwd=ROOT, env=env, **kwargs)
+    return subprocess.Popen(["node", str(ROOT / "callpay_gateway.mjs")], cwd=ROOT, env=env, **kwargs)
 
 
 def _stop_process_tree(process: subprocess.Popen) -> None:
@@ -82,7 +82,7 @@ def _wait_for_web(web: subprocess.Popen, port: int, timeout: int = 120) -> None:
 def main() -> int:
     signal.signal(signal.SIGTERM, _request_shutdown)
     api_port = int(os.environ.get("CALLPAY_API_PORT", "8000"))
-    # Replit maps port 3000; Render and similar hosts pass the public port as PORT.
+    # Render and other hosts provide the public listener port through PORT.
     web_port = int(os.environ.get("CALLPAY_WEB_PORT") or os.environ.get("PORT") or "3000")
     next_port = int(os.environ.get("CALLPAY_NEXT_PORT", "3001"))
     env = os.environ.copy()
