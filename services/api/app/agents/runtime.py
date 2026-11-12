@@ -28,6 +28,14 @@ log = logging.getLogger("callpay.agents")
 LLM_BUDGET_S = 9.0  # a phone caller won't wait longer than this for a reply
 
 
+class CheckoutBlocked(Exception):
+    """Checkout refused by a business rule (fraud cap, rate limit). `say` is safe to read to the caller."""
+
+    def __init__(self, say: str):
+        super().__init__(say)
+        self.say = say
+
+
 class Toolbox(Protocol):
     business: dict  # {id, name, currency, menu: [{id, name, price}]}
 
@@ -302,6 +310,8 @@ class Planner:
                  for i, v in st["cart"].items() if _cart_entry(v)[0]]
         try:
             order = await tools.place_order(lines, caller, call_id, int(st.get("tip_pct", 0)))
+        except CheckoutBlocked as e:
+            return Turn(e.say, "payments", used)
         except Exception as e:  # noqa: BLE001
             log.warning("checkout failed: %s", e)
             return Turn("Sorry, I couldn't reach PayPal just now. Let me try again in a moment, just say yes.", "payments", used)

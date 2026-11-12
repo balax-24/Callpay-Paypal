@@ -23,7 +23,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from . import main as core
-from .agents.runtime import Planner, Turn
+from . import routes_ops as ops
+from .agents.runtime import CheckoutBlocked, Planner, Turn
 from .db import Business, Call, Order, SupportCase
 from .providers.chain import AllProvidersFailed
 
@@ -52,9 +53,14 @@ class ApiTools:
         self.business = business
 
     async def place_order(self, lines: list[dict], caller: str | None, call_id: str, tip_pct: int = 0) -> dict:
-        return await core.create_order(core.CreateOrder(
-            business_id=self.business["id"], customer_phone=caller, call_id=call_id, tip_pct=tip_pct,
-            lines=[core.OrderLine(**line) for line in lines]))
+        try:
+            return await core.create_order(core.CreateOrder(
+                business_id=self.business["id"], customer_phone=caller, call_id=call_id, tip_pct=tip_pct,
+                lines=[core.OrderLine(**line) for line in lines]))
+        except HTTPException as e:  # fraud cap / rate limit: tell the caller plainly instead of blaming PayPal
+            if isinstance(e.detail, dict) and e.detail.get("say"):
+                raise CheckoutBlocked(e.detail["say"]) from e
+            raise
 
     async def order_status(self, order_id: str) -> dict:
         try:
@@ -94,6 +100,7 @@ def _call_json(c: Call) -> dict:
 
 
 async def start_call(business_id: str | None, channel: str, caller: str | None, external_id: str | None = None) -> tuple[Call, str]:
+    await ops.guard_new_call(caller)  # per-caller rate limit + fraud rule
     biz = await _business(business_id)
     say = planner().greeting(biz)
     async with core.state.db.session() as s:
@@ -119,9 +126,13 @@ async def run_turn(call_id: str, text: str) -> tuple[Turn, Call]:
             biz = await _business(c.business_id)
             st = copy.deepcopy(c.state or {})
             history = list(c.transcript or [])
-            t0 = time.perf_counter()
-            turn = await planner().turn(text, st, ApiTools(biz), history, c.id, c.caller)
-            TURN_SECONDS.labels(turn.agent, turn.llm or "rules").observe(time.perf_counter() - t0)
+            if len(history) >= 2 * core.state.settings.rate_turns_per_call:  # per-call turn limit
+                turn = Turn("We've been on the line a while, so I'll let you go. Please call back to finish your order.",
+                            "planner", end_call=True)
+            else:
+                t0 = time.perf_counter()
+                turn = await planner().turn(text, st, ApiTools(biz), history, c.id, c.caller)
+                TURN_SECONDS.labels(turn.agent, turn.llm or "rules").observe(time.perf_counter() - t0)
             history += [{"role": "caller", "text": text[:600], "ts": _now()},
                         {"role": "agent", "text": turn.say, "agent": turn.agent, "llm": turn.llm, "ts": _now()}]
             c.state, c.transcript = st, history
@@ -301,7 +312,12 @@ async def phone_incoming(carrier: str, request: Request):
     if carrier not in CARRIERS:
         raise HTTPException(404)
     form = await _form(request, carrier)
-    c, say = await start_call(request.query_params.get("business_id"), carrier, form.get("From"), form.get("CallSid"))
+    try:
+        c, say = await start_call(request.query_params.get("business_id"), carrier, form.get("From"), form.get("CallSid"))
+    except HTTPException as e:
+        if e.status_code == 429 and isinstance(e.detail, dict):
+            return _twiml(_say(e.detail.get("say", "Please try again later.")), "<Hangup/>")
+        raise
     return _twiml(_gather(c.id, _say(say)), f'<Redirect method="POST">turn?call={c.id}&amp;silence=1</Redirect>')
 
 

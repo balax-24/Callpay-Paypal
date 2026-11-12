@@ -19,7 +19,7 @@ from .config import Settings, get_settings
 from .analytics import Analytics, ClickHouse
 from .db import AuditLog, Business, Call, Database, MenuItem, Order, Payout, ProviderEvent, Refund, Staff, SupportCase, WebhookEvent
 from .paypal.client import PayPalClient, PayPalError
-from .policy import evaluate_payout, evaluate_refund
+from .policy import Decision, evaluate_payout, evaluate_refund
 from .agents.runtime import crew_split
 from .paypal.payments import PaymentRequest, build_payment_chain
 from .providers.chain import AllProvidersFailed, FailoverEvent
@@ -109,6 +109,8 @@ async def _seed() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _audit_lock
+    _audit_lock = asyncio.Lock()  # a lock belongs to one event loop; make a fresh one per app start
     s = state.settings = get_settings()
     state.http = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0))
     state.db = Database(s.database_url, s.sqlite_fallback_url)
@@ -123,6 +125,10 @@ async def lifespan(app: FastAPI):
     state.analytics = Analytics(ch, state.db, state.llm)
     state.analytics.kafka_feeds_clickhouse = await ch.start(s.kafka_bootstrap)
     state.bus.hooks.append(state.analytics.record)
+    from . import routes_ops
+
+    routes_ops._last_alert.clear()  # cooldowns start fresh with each app start
+    state.bus.hooks.append(routes_ops.alert_hook)
     state.flows = FlowEngine(
         s.temporal_address, s.temporal_task_queue,
         Ops(status=_op_status, fulfil=_op_fulfil, ready=_op_ready, crew_payout=_op_crew_payout, remind=_op_remind, expire=_op_expire),
@@ -321,6 +327,9 @@ async def create_order(body: CreateOrder):
         if tip:
             items.append({"name": "Crew tip", "quantity": 1, "unit_amount": str(tip), "note": "Optional crew tip"})
         payable_total = total + tip
+        from . import routes_ops
+
+        await routes_ops.guard_checkout(body.customer_phone, payable_total)  # per-caller rate limit + fraud cap
         order = Order(business_id=biz.id, customer_phone=body.customer_phone, items=items, total=payable_total, tip=tip, currency=biz.currency, call_id=body.call_id)
         s.add(order)
         await s.commit()
@@ -833,6 +842,10 @@ async def refund_order(order_id: str, body: CreateRefund):
         else:
             amount = body.amount or (o.total - already)
         d = evaluate_refund(amount, o.total, already, auto_limit=Decimal(str(state.settings.refund_auto_limit)))
+        from . import routes_ops
+
+        if d.decision == "auto" and await routes_ops.active_flag(o.customer_phone):
+            d = Decision("approval", ["caller is flagged for unusual activity, so the owner must approve"])
         r = Refund(order_id=o.id, amount=amount, currency=o.currency, reason=body.reason, policy=d.as_dict(),
                    status={"deny": "rejected", "approval": "pending_approval", "auto": "approved"}[d.decision],
                    decided_by="policy" if d.decision != "approval" else None)
@@ -843,6 +856,7 @@ async def refund_order(order_id: str, body: CreateRefund):
         result = _refund_json(r)
     await _audit("policy", "refund.requested", "refund", result["id"],
                  {"order_id": order_id, "amount": result["amount"], "status": result["status"], "policy": result["policy"]})
+    await state.bus.publish("refund.requested", {"refund_id": result["id"], "order_id": order_id, "amount": result["amount"], "status": result["status"]})
     return result
 
 
@@ -1006,3 +1020,7 @@ async def metrics():
 from .routes_voice import router as voice_router  # noqa: E402
 
 app.include_router(voice_router)
+
+from .routes_ops import router as ops_router  # noqa: E402
+
+app.include_router(ops_router)

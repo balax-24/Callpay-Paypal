@@ -230,6 +230,22 @@ class PayPalClient:
             raise PayPalError(r.status_code, r.text)
         return r.json() if r.content else {}
 
+    # ---------- Transaction Search (reconciliation) ----------
+    async def search_transactions(self, start: str, end: str, max_pages: int = 10) -> list[dict]:
+        """All transactions between two ISO-8601 instants (PayPal allows at most 31 days per query)."""
+        out: list[dict] = []
+        page = 1
+        while page <= max_pages:
+            res = await self.request(
+                "GET", "/v1/reporting/transactions",
+                params={"start_date": start, "end_date": end, "fields": "transaction_info", "page_size": 100, "page": page},
+            )
+            out.extend(res.get("transaction_details", []))
+            if page >= int(res.get("total_pages") or 1):
+                break
+            page += 1
+        return out
+
     # ---------- Webhooks ----------
     async def verify_webhook(self, headers: dict[str, str], event: dict) -> bool:
         if not self.s.paypal_webhook_id:

@@ -56,6 +56,20 @@ class Settings(BaseSettings):
     crew_share_pct: float = 10.0
     refund_auto_limit: float = 20.0
 
+    # Fraud guard and per-caller rate limits (apply to callers with a known phone number)
+    fraud_calls_threshold: int = 5       # calls from one number within the window -> flagged
+    fraud_window_minutes: int = 10
+    fraud_flag_minutes: int = 60
+    fraud_checkout_cap: float = 30.0     # flagged callers cannot check out above this
+    rate_calls_per_window: int = 8       # hard stop: calls per number per fraud window
+    rate_checkouts_per_hour: int = 3
+    rate_turns_per_call: int = 60
+
+    # Owner alerts (text if an SMS provider is configured, otherwise shown on the dashboard)
+    owner_phone: str = ""
+    owner_alert_order_total: float = 100.0
+    owner_alert_cooldown_s: int = 300
+
     # Object storage (S3-compatible; empty = local disk)
     s3_url: str = ""
     s3_bucket: str = "callpay"

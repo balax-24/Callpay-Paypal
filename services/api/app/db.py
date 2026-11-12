@@ -178,6 +178,31 @@ class Payout(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class FraudFlag(Base):
+    """A caller under extra scrutiny: checkout capped and refunds routed to the owner."""
+
+    __tablename__ = "fraud_flags"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    caller: Mapped[str] = mapped_column(String(32), index=True)
+    reason: Mapped[str] = mapped_column(String(300))
+    source: Mapped[str] = mapped_column(String(20), default="rule")  # rule|owner
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OwnerAlert(Base):
+    """Something the owner should know about now (approval needed, dispute, large order, fraud)."""
+
+    __tablename__ = "owner_alerts"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    kind: Mapped[str] = mapped_column(String(40))
+    message: Mapped[str] = mapped_column(String(300))
+    channel: Mapped[str] = mapped_column(String(20), default="screen")  # sms|screen
+    entity_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 MIGRATIONS = [
     "ALTER TABLE orders ADD COLUMN call_id VARCHAR(32)",
     "ALTER TABLE orders ADD COLUMN capture_id VARCHAR(64)",
